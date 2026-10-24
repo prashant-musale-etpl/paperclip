@@ -1,6 +1,9 @@
 # Project lifecycles: configurable, enforced phases per project
 
-Status: proposal (design only, no code yet).
+Status: step 1 implemented (configuration layer behind
+`experimental.enableProjectLifecycles`). Decision 2026-10-24: build per-task
+phases first; a waterfall project can be approximated by one top-level
+"Project delivery" task with sub-tasks. A project-level phase mode may follow.
 
 ## Problem
 
@@ -207,7 +210,11 @@ Behind `experimental.enableProjectLifecycles`. Projects without a lifecycle
 are unaffected, so no data backfill is needed.
 
 1. PR 1 – schema, migration, shared contracts, service + gate evaluation, REST,
-   unit and real-database tests.
+   unit and real-database tests. **Done.** Adjustments from the proposal:
+   `issues.phase_key`, `issue_phase_transitions` and the transition endpoint
+   move to PR 2, because advancing a task must go through the issues service
+   (assignment, wakeups, checkout) rather than a direct table write; template
+   routes are nested under the company (`/companies/:companyId/lifecycle-templates/:templateId`).
 2. PR 2 – issues `done` hook, agent execution context, native tools,
    `skills/paperclip` guidance.
 3. PR 3 – UI (lifecycle editor, issue stepper, board grouping).
@@ -218,8 +225,7 @@ are unaffected, so no data backfill is needed.
 
 - Should sub-issues inherit their parent's phase (read-only) or be ungated?
   Proposed default: only top-level issues are gated (`scope: top_level`).
-- Should a project also have a single "project phase" for waterfall-style
-  projects? Can be derived as the earliest phase among open tracked issues.
+- Project-level phase for waterfall projects: deferred (see decision above).
 - Are phase owners concrete agents or roles resolved at entry time?
   Proposed: concrete agent/user, with role resolution as a follow-up.
 - Phase-level budgets or SLAs (time-in-phase alerts) — follow-up.

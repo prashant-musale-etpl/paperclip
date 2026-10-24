@@ -86,6 +86,8 @@ export interface InstanceExperimentalSettings {
   enableMemoryConnectors: boolean;
   enablePaperclipNotebook: boolean;
   enableCases: boolean;
+  /** Per-project lifecycle phases (e.g. Requirements → Design → Release) and their exit gates. */
+  enableProjectLifecycles: boolean;
   enableAgentChat: boolean;
   /** Reorganized left nav, Inbox-as-Tasks-views, and the chat agent rail + task cards. */
   enableCombinedInboxTasks: boolean;

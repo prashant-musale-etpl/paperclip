@@ -154,3 +154,29 @@ Project configuration responses also expose effective workspace storage through
 read/update permissions apply. Omitted provider IDs inherit; null explicitly selects
 Core/local. [Offline API coverage](../../server/src/__tests__/project-workspace-provider.integration.test.ts)
 checks overrides and cross-company denial; live agent credential verification remains unqualified.
+
+## `phase-lifecycles`
+
+Capability ID: `projects/phase-lifecycles`.
+
+Review: `baseline`.
+
+API: `present` — representative operation IDs:
+
+- `GET /api/projects/{id}/lifecycle`.
+- `PUT /api/projects/{id}/lifecycle`.
+- `POST /api/companies/{companyId}/lifecycle-templates`.
+
+Agent access: `partial` — Agents may read templates and project lifecycles over REST;
+every write is board-only. No native tools yet.
+
+Policy: Requires `enableProjectLifecycles`, company access and project read access.
+Phase owners and stage participants must belong to the same company.
+
+Evidence: `source-only` — [implementation](../../server/src/routes/project-lifecycles.ts) and
+[route tests](../../server/src/__tests__/project-lifecycles-routes.test.ts).
+
+Verification: `not-run` — exercise a read with actual agent credentials and confirm a
+write is rejected with 403.
+
+Gaps: Phases are configuration only; tasks do not carry or enforce a phase yet.

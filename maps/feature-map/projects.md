@@ -19,6 +19,7 @@ Agent access: [companion](../agent-access-map/projects.md).
 - `repositories`: `projects/repositories` — configure repository/workspace sources and verify usable checkouts.
 - `defaults`: `projects/defaults` — maintain project instructions, environment, goal, and budget context where offered.
 - `privacy`: `projects/privacy` — create private projects, inspect access members, and manage their audience without publishing protected tasks.
+- `phase-lifecycles`: `projects/phase-lifecycles` — experimental: define an ordered set of phases per project (for example Requirements → Design → Release) from a reusable template or directly, with owners and exit gates.
 
 ## How to get to it (user POV)
 
@@ -61,6 +62,12 @@ Automated: [Privacy production review](../../server/src/__tests__/privacy-produc
 Manual: As an ordinary authenticated project owner, create a private project and task. Add another company person and an eligible agent through Manage access, reload, and inspect their project discovery and task reads. The added person can view members but cannot change the audience. Remove them, reload their session, and retry direct project/task links. Confirm removing the owner is unavailable or rejected. Add a direct grant for one private task, then open the project to the company after inspecting the confirmation. Verify the project becomes discoverable, protected tasks remain private, and project-derived task access no longer substitutes for direct task access. Test the agent and its responsible person separately.
 
 Sources: [Project properties](../../ui/src/components/ProjectProperties.tsx), [access members](../../ui/src/components/ProjectAccessMembers.tsx), [project routes](../../server/src/routes/projects.ts), and [authorization](../../server/src/services/authorization.ts).
+
+### `phase-lifecycles`
+
+Automated: [lifecycle routes](../../server/src/__tests__/project-lifecycles-routes.test.ts) cover the experimental flag gate, template copy semantics, version conflicts, board-only writes, agent reads, company boundaries and activity logging against a real database. [Contract tests](../../packages/shared/src/project-lifecycles.test.ts) cover phase ordering and gate evaluation.
+
+Manual: Enable **Project lifecycles** in Instance → Experimental. Through the API, create a template, adopt it on a disposable project with `PUT /api/projects/:id/lifecycle`, edit the template, and confirm the project keeps its copy. Retry as an agent and confirm writes are rejected. Phases are configuration only in this step: no task is gated yet and there is no lifecycle editor UI.
 
 ## Gotchas
 

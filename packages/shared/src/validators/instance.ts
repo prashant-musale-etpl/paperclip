@@ -62,6 +62,7 @@ export const instanceExperimentalSettingsSchema = z.object({
   enableMemoryConnectors: z.boolean().default(false),
   enablePaperclipNotebook: z.boolean().default(false),
   enableCases: z.boolean().default(false),
+  enableProjectLifecycles: z.boolean().default(false),
   enableAgentChat: z.boolean().default(false),
   enableCombinedInboxTasks: z.boolean().default(false),
   enableArtifactsV1: z.boolean().default(false),

@@ -2586,6 +2586,35 @@ and experimental setting are removed. Existing database tables and records remai
 for data preservation; there is no migration that drops or rewrites them. The
 independent Cases and Routines features remain available.
 
+### Experimental project lifecycles
+
+`experimental.enableProjectLifecycles` lets a board configure an ordered list of
+phases per project, for example Requirements → Design → Development → Testing →
+UAT → Deploy → Release. Unlike the retired Pipelines, phases attach to ordinary
+projects and (in a later step) ordinary tasks; there is no parallel work object.
+
+Company-scoped `lifecycle_templates` hold reusable phase lists. A project's
+`project_lifecycles` row holds its mode (`off`, `advisory` or `enforced`) and a
+version; `project_lifecycle_phases` holds its own copy of the phases. Adopting a
+template copies its phases, so later template edits affect only future adoptions.
+Each phase has a key, name, kind (`work` or a single last `terminal`), an optional
+agent or user owner, Markdown instructions, rework targets (earlier phases only)
+and an exit gate: required task document keys, required work product types,
+whether sub-tasks must be terminal, and review/approval stages using the issue
+execution-policy stage contract. Owners and stage participants must belong to the
+project's company.
+
+REST: `GET`/`POST /api/companies/:companyId/lifecycle-templates`,
+`GET`/`PATCH /api/companies/:companyId/lifecycle-templates/:templateId` (PATCH
+also archives), and `GET`/`PUT /api/projects/:id/lifecycle`. PUT takes a template,
+explicit phases, or neither to change only the mode, plus an optional
+`expectedVersion` that returns 409 when stale. Reads need company and project read
+access; writes are board-only because the lifecycle defines the gates agents must
+pass. Every write is activity-logged.
+
+This step is configuration only: tasks do not yet carry a phase and no transition
+is gated. See [project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
+
 Company-managed [Prompt Injection Prevention](prompt-injection-prevention.md)
 optionally classifies existing tool-result boundaries through a shared OpenRouter
 connection. Settings → Connections is permanent; valid model verdicts take

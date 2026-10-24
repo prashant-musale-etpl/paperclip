@@ -114,6 +114,7 @@ function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
     enableSimplifiedEnglishInteractions: false,
     enableFirstTaskPlanProposal: false,
     enableSmokeLab: false,
+    enableProjectLifecycles: false,
     autoRestartDevServerWhenIdle: false,
     enableWorkspaceBranchReconcileForward: true,
     enableWorkspaceDirtyQuarantineRepair: true,
