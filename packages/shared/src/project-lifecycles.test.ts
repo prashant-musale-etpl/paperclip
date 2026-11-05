@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateLifecyclePhaseExitGate,
+  issuePhaseTransitionRequestSchema,
   lifecyclePhaseExitGateSchema,
   lifecyclePhaseListSchema,
   putProjectLifecycleSchema,
@@ -69,5 +70,13 @@ describe("evaluateLifecyclePhaseExitGate", () => {
     expect(evaluateLifecyclePhaseExitGate(gate, {
       documentKeys: ["requirements", "design"], workProductTypes: ["pull_request"], openChildCount: 0,
     })).toEqual([]);
+  });
+});
+
+describe("issuePhaseTransitionRequestSchema", () => {
+  it("allows only rework and override, with a reason", () => {
+    expect(issuePhaseTransitionRequestSchema.safeParse({ kind: "rework", toPhaseKey: "development", reason: "Bugs" }).success).toBe(true);
+    expect(issuePhaseTransitionRequestSchema.safeParse({ kind: "rework", toPhaseKey: "development", reason: "  " }).success).toBe(false);
+    expect(issuePhaseTransitionRequestSchema.safeParse({ kind: "advance", toPhaseKey: "design", reason: "Skip" }).success).toBe(false);
   });
 });

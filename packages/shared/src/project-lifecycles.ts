@@ -105,6 +105,23 @@ export const putProjectLifecycleSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
 }).strict().refine(value => !(value.templateId && value.phases), "Provide templateId or phases, not both");
 
+export const ISSUE_PHASE_TRANSITION_KINDS = ["initial", "advance", "complete", "rework", "override"] as const;
+export type IssuePhaseTransitionKind = (typeof ISSUE_PHASE_TRANSITION_KINDS)[number];
+
+/**
+ * Explicit phase moves. `rework` sends a task back to one of the current
+ * phase's `reworkTo` phases; `override` (board only) moves to any phase.
+ * Forward moves happen by completing the task, so the exit gate always runs.
+ */
+export const issuePhaseTransitionRequestSchema = z.object({
+  kind: z.enum(["rework", "override"]),
+  toPhaseKey: lifecycleKeySchema,
+  reason: z.string().trim().min(1).max(2_000),
+  expectedPhaseVersion: z.number().int().nonnegative().optional(),
+}).strict();
+
+export type IssuePhaseTransitionRequest = z.infer<typeof issuePhaseTransitionRequestSchema>;
+
 export type LifecyclePhaseExitGate = z.infer<typeof lifecyclePhaseExitGateSchema>;
 export type LifecyclePhaseInput = z.input<typeof lifecyclePhaseSchema>;
 export type LifecyclePhaseDefinition = z.infer<typeof lifecyclePhaseSchema>;
@@ -137,6 +154,23 @@ export interface ProjectLifecycle {
   version: number;
   phases: ProjectLifecyclePhase[];
   updatedAt: Date | string;
+}
+
+export interface IssuePhaseTransition {
+  id: string;
+  companyId: string;
+  issueId: string;
+  projectId: string;
+  fromPhaseKey: string | null;
+  toPhaseKey: string;
+  kind: IssuePhaseTransitionKind;
+  lifecycleMode: LifecycleMode;
+  reason: string | null;
+  gateGaps: LifecyclePhaseGateGap[];
+  actorAgentId: string | null;
+  actorUserId: string | null;
+  runId: string | null;
+  createdAt: Date | string;
 }
 
 /** Observable facts about an issue, gathered by the server when a phase exit is requested. */

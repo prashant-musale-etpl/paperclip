@@ -1,3 +1,4 @@
+import { blockedPhaseCompletion } from "../issue-phases.js";
 import { scheduledIssueMonitorWait } from "../issue-monitors.js";
 import { hasPublishedGitHubReview } from "../chat-channels/github/review-wait.js";
 import { pendingNativeGovernance } from "./native-governance.js";
@@ -1622,6 +1623,25 @@ export async function commitNativeStatusDecision(input: {
     if (issue.conversationAgentId && input.decision.statusAction === "done") {
       input = { ...input, decision: { ...input.decision, statusAction: "preserve", toStatus: issue.status as NativeStatusDecision["toStatus"], effects: [] } };
     }
+    // An enforced lifecycle phase gate is not met: keep the task in its phase
+    // rather than failing the decision. The next run context lists the gaps.
+    const phaseGateBlock = input.decision.statusAction === "done" && issue.status !== "done"
+      ? await blockedPhaseCompletion(tx as unknown as Db, issue)
+      : null;
+    if (phaseGateBlock) {
+      input = { ...input, decision: { ...input.decision, statusAction: "preserve", toStatus: issue.status as NativeStatusDecision["toStatus"], effects: [] } };
+      const { publication } = await persistActivity(tx as unknown as Db, {
+        companyId: input.companyId,
+        actorType: "system",
+        actorId: "native-status-committer",
+        action: "issue.phase_gate_blocked",
+        entityType: "issue",
+        entityId: input.issueId,
+        runId: input.runId,
+        details: { source: "native_status_decision", ...phaseGateBlock },
+      });
+      publications.push(publication);
+    }
     if (coordinator.phase === "committed" && coordinator.decisionId) {
       if (input.supersedesCommittedDecisionId) {
         if (
@@ -2082,7 +2102,28 @@ export async function commitNativeStatusDecision(input: {
       });
     }
 
-    if (input.decision.statusAction === "done" && issue.status !== "done") {
+    // A lifecycle phase can turn a completion into entry of the next phase.
+    // The new phase owner is woken through this committer's durable queue.
+    if (updated.phaseVersion !== issue.phaseVersion && updated.assigneeAgentId && updated.status !== "done") {
+      const wakeId = await enqueueWake({
+        tx: tx as unknown as Db,
+        companyId: input.companyId,
+        issueId: input.issueId,
+        agentId: updated.assigneeAgentId,
+        reason: "issue_assigned",
+        idempotencyKey: `issue_phase_entered:${input.issueId}:${updated.phaseVersion}`,
+        payload: { phaseKey: updated.phaseKey },
+        contextSnapshot: { phaseKey: updated.phaseKey },
+      });
+      materialized.push({
+        effectKind: "phase_entry_wake",
+        targetType: "agent_wakeup_request",
+        targetId: wakeId,
+        payload: { phaseKey: updated.phaseKey, phaseVersion: updated.phaseVersion },
+      });
+    }
+
+    if (input.decision.statusAction === "done" && issue.status !== "done" && updated.status === "done") {
       const issueSvc = issueService(tx as unknown as Db);
       const dependents = await issueSvc.listWakeableBlockedDependents(
         input.issueId,

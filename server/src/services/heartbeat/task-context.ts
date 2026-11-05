@@ -1,3 +1,4 @@
+import { getIssuePhaseExecutionContext } from "../issue-phases.js";
 import { createHash } from "node:crypto";
 import type { Db, agents, agentTaskSessions, heartbeatRuns, issueComments } from "@paperclipai/db";
 import { FAST_RESPONSE_AGENT_GUIDANCE, fastResponseHistoryBody } from "@paperclipai/shared";
@@ -37,7 +38,7 @@ export interface HeartbeatTaskContextInput {
   policy: {
     recovering?: boolean;
     trustPreset: Pick<TrustPresetResolution, "kind">;
-    experimentalInstanceSettings: { enableSimplifiedEnglishInteractions?: boolean; enableCases?: boolean };
+    experimentalInstanceSettings: { enableSimplifiedEnglishInteractions?: boolean; enableCases?: boolean; enableProjectLifecycles?: boolean };
   };
   services: {
     issuesSvc: Pick<ReturnType<typeof issueService>, "getAncestors">;
@@ -274,7 +275,12 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
     : null;
   if (workflowCase) context.paperclipCase = workflowCase;
   else delete context.paperclipCase;
-  const assignmentPrefix = liveVoiceTaskPrefix + caseExecutionMarkdown(workflowCase);
+  const lifecyclePhase = issueRef && experimentalInstanceSettings.enableProjectLifecycles
+    ? await getIssuePhaseExecutionContext(db, { companyId: agent.companyId, issueId: issueRef.id })
+    : null;
+  if (lifecyclePhase) context.paperclipLifecyclePhase = lifecyclePhase.context;
+  else delete context.paperclipLifecyclePhase;
+  const assignmentPrefix = liveVoiceTaskPrefix + caseExecutionMarkdown(workflowCase) + (lifecyclePhase?.markdown ?? "");
   let taskMarkdown = assignmentPrefix + buildPaperclipTaskMarkdown({ ...taskMarkdownInput, taskPlan }) + chatCompletionInstruction(context);
   let taskMarkdownAssignment = assignmentPrefix + buildPaperclipTaskMarkdown({
     ...taskMarkdownInput,

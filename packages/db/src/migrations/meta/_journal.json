@@ -2640,6 +2640,13 @@
       "when": 1792857372837,
       "tag": "0378_huge_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 379,
+      "version": "7",
+      "when": 1793880143649,
+      "tag": "0379_condemned_iceman",
+      "breakpoints": true
     }
   ]
 }

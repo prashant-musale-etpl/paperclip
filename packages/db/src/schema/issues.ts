@@ -73,6 +73,11 @@ export const issues = pgTable(
     assigneeAdapterOverrides: jsonb("assignee_adapter_overrides").$type<Record<string, unknown>>(),
     executionPolicy: jsonb("execution_policy").$type<Record<string, unknown>>(),
     executionState: jsonb("execution_state").$type<Record<string, unknown>>(),
+    // Project lifecycle phase. Server-owned: set on creation in a lifecycle
+    // project and changed only by phase transitions.
+    phaseKey: text("phase_key"),
+    phaseVersion: integer("phase_version").notNull().default(0),
+    phaseEnteredAt: timestamp("phase_entered_at", { withTimezone: true }),
     monitorNextCheckAt: timestamp("monitor_next_check_at", { withTimezone: true }),
     monitorWakeRequestedAt: timestamp("monitor_wake_requested_at", { withTimezone: true }),
     monitorLastTriggeredAt: timestamp("monitor_last_triggered_at", { withTimezone: true }),
@@ -127,6 +132,9 @@ export const issues = pgTable(
     privacyParentIdx: index("issues_company_privacy_parent_idx").on(table.companyId, table.privacyParentIssueId),
     privacyRootIdx: index("issues_company_privacy_root_idx").on(table.companyId, table.privacyRootIssueId),
     projectIdx: index("issues_company_project_idx").on(table.companyId, table.projectId),
+    projectPhaseIdx: index("issues_company_project_phase_idx")
+      .on(table.companyId, table.projectId, table.phaseKey)
+      .where(sql`${table.phaseKey} is not null`),
     originIdx: index("issues_company_origin_idx").on(table.companyId, table.originKind, table.originId),
     projectWorkspaceIdx: index("issues_company_project_workspace_idx").on(table.companyId, table.projectWorkspaceId),
     executionWorkspaceIdx: index("issues_company_execution_workspace_idx").on(table.companyId, table.executionWorkspaceId),

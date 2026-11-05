@@ -2612,8 +2612,45 @@ explicit phases, or neither to change only the mode, plus an optional
 access; writes are board-only because the lifecycle defines the gates agents must
 pass. Every write is activity-logged.
 
-This step is configuration only: tasks do not yet carry a phase and no transition
-is gated. See [project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
+Tasks carry a server-owned `phaseKey`, `phaseVersion` and `phaseEnteredAt`;
+callers cannot set them directly. A new top-level task (no parent, not an agent
+conversation) in a project whose lifecycle is `advisory` or `enforced` starts in
+the first phase. An explicit assignee is kept; otherwise the phase owner is
+assigned. Entering a phase sets status `todo`, assigns the phase owner when one is
+configured, replaces the task's execution-policy stages with the phase's
+review/approval stages (other policy settings and monitor state are kept) and
+resets stage progress.
+
+Tasks advance only by completing. `issueService.update` handles every accepted
+transition to `done` on a phased task, whatever the path (task API, review
+approval comment, native status decision): review/approval stages run first
+as before, then the remaining exit-gate items are checked (non-empty task
+documents with the required keys, active work products of the required types,
+terminal sub-tasks). In `enforced` mode an unmet gate returns
+`422 phase_gate_unmet` with the missing items. In `advisory` mode the gaps are
+recorded and the task moves on. A non-final phase enters the next phase instead
+of closing the task; only the final phase closes it. A task whose phase was
+removed from the lifecycle cannot be completed in `enforced` mode until the
+board moves it.
+
+`POST /api/issues/:id/phase-transitions` accepts `rework` (board or the task's
+assigned agent, only to one of the current phase's `reworkTo` targets) and
+`override` (board only, any phase, which can also place an existing unphased task
+in the lifecycle). Both need a reason, reopen closed tasks in the target phase,
+and accept `expectedPhaseVersion` (409 when stale). `GET /api/issues/:id/phase`
+returns the phase, instructions and unmet gate items; `GET
+/api/issues/:id/phase-transitions` returns the history. Every phase change
+appends an `issue_phase_transitions` row (`initial`, `advance`, `complete`,
+`rework` or `override`, with any gate gaps) and an `issue.phase_changed` activity.
+
+Entering a phase wakes the assigned agent with an `issue_assigned` wake, even
+when the owner is unchanged: on the task API and review-comment paths through
+the ordinary wake, on the native status path through the committer's durable
+queue. Agent runs receive `paperclipLifecyclePhase` in context and a phase
+section in the task text: the phase, its instructions, the next phase and the
+unmet gate items. Existing tasks are not backfilled; sub-tasks and tasks moved
+into a lifecycle project later have no phase unless the board overrides. See
+[project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
 
 Company-managed [Prompt Injection Prevention](prompt-injection-prevention.md)
 optionally classifies existing tool-result boundaries through a shared OpenRouter

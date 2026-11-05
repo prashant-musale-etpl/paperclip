@@ -2,7 +2,7 @@ import { MUSE_ASSET_VERSION, museStopBoundarySchema, museDetectorCleanupAttestat
 import { slackTestMessageSchema, slackTestMessageResultSchema, slackManagerAuthorizationSchema, slackSetupOptionsSchema, slackManagedProvisionSchema, slackManagedResultSchema, slackRegistrationSchema, slackSetupActionSchema, slackInstallAuthorizationSchema, slackRegistrationStateSchema, slackAppConfigurationSchema, slackAvatarStateSchema, slackAccountStateSchema } from "@paperclipai/shared";
 import { experimentalApiMetadata } from "./experimental-api-metadata.js";
 import { agentCaseHandoffSchema, caseWorkflowDocumentTextSchema, doneCaseHandoffSchema, createWorkflowSchema, updateWorkflowSchema, listWorkflowsSchema, readWorkflowQuerySchema } from "@paperclipai/shared";
-import { createLifecycleTemplateSchema, updateLifecycleTemplateSchema, listLifecycleTemplatesQuerySchema, putProjectLifecycleSchema } from "@paperclipai/shared";
+import { createLifecycleTemplateSchema, updateLifecycleTemplateSchema, listLifecycleTemplatesQuerySchema, putProjectLifecycleSchema, issuePhaseTransitionRequestSchema } from "@paperclipai/shared";
 import {
   experimentalApiPaths,
   experimentalApiQueries,
@@ -12584,6 +12584,16 @@ for (const [method, path, body, summary] of [
   },
   responses: { [method === "post" ? 201 : 200]: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound,
     ...(method === "get" ? {} : { 409: r.conflict, 422: r.unprocessable }) } });
+
+for (const [method, path, body, summary] of [
+  ["get", "/api/issues/{id}/phase", undefined, "Read a task's lifecycle phase, instructions and unmet exit-gate items"],
+  ["get", "/api/issues/{id}/phase-transitions", undefined, "List a task's lifecycle phase history"],
+  ["post", "/api/issues/{id}/phase-transitions", issuePhaseTransitionRequestSchema, "Send a task back for rework or override its phase"],
+] as const) registry.registerPath({ method, path, tags: ["Issues"], summary,
+  description: "Requires enableProjectLifecycles and task access. Tasks advance by being marked done: in an enforced lifecycle an unmet exit gate returns 422 phase_gate_unmet, and a non-final phase moves to the next phase instead of closing. POST supports rework to one of the current phase's configured rework targets (board or the assigned agent) and override to any phase (board only); a reason is required and expectedPhaseVersion returns 409 when stale.",
+  request: { params: z.object({ id: z.string().uuid() }), ...(body ? { body: jsonBody(body) } : {}) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound,
+    ...(method === "post" ? { 409: r.conflict, 422: r.unprocessable } : {}) } });
 
 for (const [method, path, body] of experimentalApiPaths) {
   const query = experimentalApiQueries[`${method.toUpperCase()} ${path}`];

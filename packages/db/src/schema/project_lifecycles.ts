@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
 import { companies } from "./companies.js";
+import { issues } from "./issues.js";
 import { projects } from "./projects.js";
 
 /**
@@ -97,5 +98,33 @@ export const projectLifecyclePhases = pgTable(
     projectPositionUq: uniqueIndex("project_lifecycle_phases_project_position_uq").on(table.projectId, table.position),
     companyIdx: index("project_lifecycle_phases_company_idx").on(table.companyId),
     kindCheck: check("project_lifecycle_phases_kind_check", sql`${table.kind} in ('work', 'terminal')`),
+  }),
+);
+
+/** Append-only history of an issue's phase changes. */
+export const issuePhaseTransitions = pgTable(
+  "issue_phase_transitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull(),
+    fromPhaseKey: text("from_phase_key"),
+    toPhaseKey: text("to_phase_key").notNull(),
+    kind: text("kind").notNull(),
+    lifecycleMode: text("lifecycle_mode").notNull(),
+    reason: text("reason"),
+    gateGaps: jsonb("gate_gaps").$type<Record<string, unknown>[]>().notNull().default([]),
+    actorAgentId: uuid("actor_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    actorUserId: text("actor_user_id"),
+    runId: uuid("run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    issueCreatedIdx: index("issue_phase_transitions_issue_created_idx").on(table.companyId, table.issueId, table.createdAt),
+    kindCheck: check(
+      "issue_phase_transitions_kind_check",
+      sql`${table.kind} in ('initial', 'advance', 'complete', 'rework', 'override')`,
+    ),
   }),
 );

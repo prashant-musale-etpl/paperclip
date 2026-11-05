@@ -216,7 +216,13 @@ are unaffected, so no data backfill is needed.
    (assignment, wakeups, checkout) rather than a direct table write; template
    routes are nested under the company (`/companies/:companyId/lifecycle-templates/:templateId`).
 2. PR 2 – issues `done` hook, agent execution context, native tools,
-   `skills/paperclip` guidance.
+   `skills/paperclip` guidance. **Done**, except native tools: agents complete
+   through the existing status paths and rework through REST
+   (`POST /api/issues/:id/phase-transitions`); the run context explains both.
+   The hook lives in `issueService.update` so every completion path is gated.
+   Entering a phase reuses the `issue_assigned` wake (fresh session). Known gaps:
+   workspace hand-back/restore routes do not add a same-owner phase wake;
+   existing tasks are not backfilled.
 3. PR 3 – UI (lifecycle editor, issue stepper, board grouping).
 4. PR 4 – seeded templates (SDLC, Bugfix), docs (SPEC-implementation, maps),
    CLI support.

@@ -15446,6 +15446,8 @@ export function issueRoutes(
       const assigneeChanged =
         issue.assigneeAgentId !== existing.assigneeAgentId ||
         issue.assigneeUserId !== existing.assigneeUserId;
+      // Entering a lifecycle phase is new work even when the owner is unchanged.
+      const phaseEntered = (issue.phaseVersion ?? 0) !== (existing.phaseVersion ?? 0);
       const statusChangedFromBacklog =
         existing.status === "backlog" &&
         issue.status !== "backlog" &&
@@ -15555,7 +15557,7 @@ export function issueRoutes(
         if (executionStageWakeup && deferWakeForGoal !== true) {
           addWakeup(executionStageWakeup.agentId, executionStageWakeup.wakeup);
         } else if (
-          assigneeChanged &&
+          (assigneeChanged || phaseEntered) &&
           issue.assigneeAgentId &&
           issue.status !== "backlog" &&
           // Restoring an assignee on completed work is not a reopen request.
@@ -15571,6 +15573,7 @@ export function issueRoutes(
               issueId: issue.id,
               ...(comment ? { commentId: comment.id } : {}),
               mutation: "update",
+              ...(phaseEntered ? { phaseKey: issue.phaseKey } : {}),
               ...(resumeRequested === true
                 ? { resumeIntent: true, followUpRequested: true }
                 : {}),
@@ -19203,6 +19206,24 @@ export function issueRoutes(
               blockedTransitionAt: dependent.blockedTransitionAt,
             });
           }
+        }
+
+        // Approving the last review stage can enter the next lifecycle phase
+        // instead of closing the task; the phase owner starts fresh.
+        if (
+          (currentIssue.phaseVersion ?? 0) !== (issueBeforeCommentDecision.phaseVersion ?? 0) &&
+          currentIssue.assigneeAgentId &&
+          !["done", "cancelled"].includes(currentIssue.status)
+        ) {
+          addWakeup(currentIssue.assigneeAgentId, {
+            source: "assignment",
+            triggerDetail: "system",
+            reason: "issue_assigned",
+            payload: { issueId: currentIssue.id, mutation: "comment", phaseKey: currentIssue.phaseKey },
+            requestedByActorType: actor.actorType,
+            requestedByActorId: actor.actorId,
+            contextSnapshot: { issueId: currentIssue.id, source: "issue.phase_entered" },
+          });
         }
 
         const becameTerminal =

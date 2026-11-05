@@ -1,15 +1,19 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import type { Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
+import { issues, type Db } from "@paperclipai/db";
 import {
   createLifecycleTemplateSchema,
+  issuePhaseTransitionRequestSchema,
   listLifecycleTemplatesQuerySchema,
   putProjectLifecycleSchema,
   updateLifecycleTemplateSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { notFound } from "../errors.js";
-import { accessService, projectService } from "../services/index.js";
+import { forbidden, notFound } from "../errors.js";
+import { logger } from "../middleware/logger.js";
+import { accessService, heartbeatService, issueService, projectService } from "../services/index.js";
+import { describeIssuePhase, listIssuePhaseTransitions } from "../services/issue-phases.js";
 import { projectLifecycleService, requireProjectLifecyclesEnabled, type LifecycleActor } from "../services/project-lifecycles.js";
 import { assertBoard, assertCompanyAccess, getActorInfo, hasCompanyAccess } from "./authz.js";
 
@@ -22,6 +26,8 @@ export function projectLifecycleRoutes(db: Db) {
   const service = projectLifecycleService(db);
   const projects = projectService(db);
   const access = accessService(db);
+  const issueSvc = issueService(db);
+  const heartbeat = heartbeatService(db);
 
   function lifecycleActor(req: Request): LifecycleActor {
     const actor = getActorInfo(req);
@@ -40,6 +46,31 @@ export function projectLifecycleRoutes(db: Db) {
     });
     if (!decision.allowed) throw notFound("Project not found");
     return project;
+  }
+
+  /** Same issue access decision as the issue routes; unreadable tasks are 404. */
+  async function accessibleIssue(req: Request, action: "issue:read" | "issue:mutate") {
+    const id = z.string().guid().parse(req.params.id);
+    const [issue] = await db.select().from(issues).where(eq(issues.id, id));
+    if (!issue || !hasCompanyAccess(req, issue.companyId)) throw notFound("Issue not found");
+    assertCompanyAccess(req, issue.companyId);
+    const scope = {
+      issueId: issue.id,
+      projectId: issue.projectId,
+      parentIssueId: issue.parentId,
+      assigneeAgentId: issue.assigneeAgentId,
+      assigneeUserId: issue.assigneeUserId,
+    };
+    for (const step of action === "issue:read" ? ["issue:read"] as const : ["issue:read", "issue:mutate"] as const) {
+      const decision = await access.decide({
+        actor: req.actor,
+        action: step,
+        resource: { type: "issue", companyId: issue.companyId, ...scope, status: issue.status },
+        scope,
+      });
+      if (!decision.allowed) throw step === "issue:read" ? notFound("Issue not found") : forbidden(decision.explanation);
+    }
+    return issue;
   }
 
   router.get("/companies/:companyId/lifecycle-templates", async (req, res) => {
@@ -87,6 +118,57 @@ export function projectLifecycleRoutes(db: Db) {
     const project = await readableProject(req);
     assertBoard(req);
     res.json(await service.putProjectLifecycle(project.companyId, project.id, lifecycleActor(req), req.body));
+  });
+
+  router.get("/issues/:id/phase", async (req, res) => {
+    await requireProjectLifecyclesEnabled(db);
+    const issue = await accessibleIssue(req, "issue:read");
+    const phase = await describeIssuePhase(db, issue);
+    if (!phase) throw notFound("Task has no lifecycle phase");
+    res.json({ issueId: issue.id, phaseVersion: issue.phaseVersion, phaseEnteredAt: issue.phaseEnteredAt, ...phase });
+  });
+
+  router.get("/issues/:id/phase-transitions", async (req, res) => {
+    await requireProjectLifecyclesEnabled(db);
+    const issue = await accessibleIssue(req, "issue:read");
+    res.json(await listIssuePhaseTransitions(db, issue.companyId, issue.id));
+  });
+
+  /**
+   * Rework (board or the task's assigned agent) or board override. Forward
+   * moves only happen by completing the task, so exit gates always run.
+   */
+  router.post("/issues/:id/phase-transitions", validate(issuePhaseTransitionRequestSchema), async (req, res) => {
+    await requireProjectLifecyclesEnabled(db);
+    const issue = await accessibleIssue(req, "issue:mutate");
+    const actorIsBoard = req.actor.type === "board";
+    if (req.body.kind === "override") assertBoard(req);
+    if (!actorIsBoard && !(req.actor.type === "agent" && req.actor.agentId === issue.assigneeAgentId)) {
+      throw forbidden("Only the board or the task's assigned agent can send it back for rework");
+    }
+    const actor = lifecycleActor(req);
+    const updated = await issueSvc.update(issue.id, {
+      phaseMove: { ...req.body, actorIsBoard },
+      companyGuard: issue.companyId,
+      actorAgentId: actor.actorType === "agent" ? actor.agentId : null,
+      actorUserId: actor.actorType === "user" ? actor.actorId : null,
+      actorRunId: actor.runId,
+    });
+    if (!updated) throw notFound("Issue not found");
+    if (updated.assigneeAgentId && updated.status !== "backlog") {
+      await heartbeat.wakeup(updated.assigneeAgentId, {
+        source: "assignment",
+        triggerDetail: "system",
+        reason: "issue_assigned",
+        payload: { issueId: updated.id, mutation: "phase_transition", phaseKey: updated.phaseKey },
+        requestedByActorType: actor.actorType,
+        requestedByActorId: actor.actorId,
+        contextSnapshot: { issueId: updated.id, source: "issue.phase_transition" },
+      }).catch(err => logger.warn({ err, issueId: updated.id }, "failed to wake phase owner after phase transition"));
+    }
+    const [row] = await db.select().from(issues).where(and(eq(issues.id, updated.id), eq(issues.companyId, issue.companyId)));
+    res.json({ issueId: updated.id, phaseKey: row?.phaseKey ?? null, phaseVersion: row?.phaseVersion ?? null, status: updated.status,
+      assigneeAgentId: updated.assigneeAgentId, assigneeUserId: updated.assigneeUserId });
   });
 
   return router;

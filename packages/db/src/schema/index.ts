@@ -46,7 +46,7 @@ export { adapterAuthSessions, ADAPTER_AUTH_SESSION_ACTIVE_STATES } from "./adapt
 export { workspaceOperations } from "./workspace_operations.js";
 export { workspaceRuntimeServices } from "./workspace_runtime_services.js";
 export { projectGoals } from "./project_goals.js";
-export { lifecycleTemplates, projectLifecycles, projectLifecyclePhases } from "./project_lifecycles.js";
+export { lifecycleTemplates, projectLifecycles, projectLifecyclePhases, issuePhaseTransitions } from "./project_lifecycles.js";
 export type { StoredLifecyclePhase, StoredLifecyclePhaseExitGate } from "./project_lifecycles.js";
 export { goals } from "./goals.js";
 export { folders } from "./folders.js";

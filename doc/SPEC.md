@@ -843,8 +843,10 @@ data preservation; Cases and Routines continue independently.
 Each project may define its own ordered phases, such as Requirements, Design,
 Development, Testing, UAT, Deploy and Release, each with an owner and exit gate.
 Phases decorate ordinary projects and tasks rather than introducing a separate
-work object. The current step stores configuration only; per-task phase tracking
-and gate enforcement follow. The contract is in `SPEC-implementation.md`.
+work object. New top-level tasks start in the first phase; completing a task runs
+its phase's exit gate and moves it to the next phase, and only the final phase
+closes it. Agents can send work back to configured earlier phases; the board can
+override. The contract is in `SPEC-implementation.md`.
 
 ### Recent task navigation summaries
 

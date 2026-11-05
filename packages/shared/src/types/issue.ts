@@ -899,6 +899,10 @@ export interface Issue {
   assigneeAdapterOverrides: IssueAssigneeAdapterOverrides | null;
   executionPolicy?: IssueExecutionPolicy | null;
   executionState?: IssueExecutionState | null;
+  /** Current project lifecycle phase; null outside a lifecycle project. */
+  phaseKey?: string | null;
+  phaseVersion?: number;
+  phaseEnteredAt?: Date | string | null;
   monitorNextCheckAt?: Date | null;
   monitorLastTriggeredAt?: Date | null;
   monitorAttemptCount?: number;
