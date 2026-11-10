@@ -525,6 +525,21 @@
       ]
     },
     {
+      "id": "skill:skills/paperclip/SKILL.md:lifecycle-phases:794",
+      "sourceKind": "skill_heading",
+      "sourceAnchor": "skills/paperclip/SKILL.md:794",
+      "title": "Lifecycle Phases",
+      "expectedSemantics": "Skill guidance headed “Lifecycle Phases”.",
+      "primaryDisposition": "optional_agent_tool",
+      "requiredGrants": [],
+      "assertionClasses": [
+        "control_plane_invariant"
+      ],
+      "evidenceIds": [
+        "skill:skills/paperclip/SKILL.md:794"
+      ]
+    },
+    {
       "id": "skill:skills/paperclip/references/api-reference.md:paperclip-api-reference:1",
       "sourceKind": "skill_heading",
       "sourceAnchor": "skills/paperclip/references/api-reference.md:1",
