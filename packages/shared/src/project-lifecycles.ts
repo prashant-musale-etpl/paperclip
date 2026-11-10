@@ -126,6 +126,7 @@ export type LifecyclePhaseExitGate = z.infer<typeof lifecyclePhaseExitGateSchema
 export type LifecyclePhaseInput = z.input<typeof lifecyclePhaseSchema>;
 export type LifecyclePhaseDefinition = z.infer<typeof lifecyclePhaseSchema>;
 export type CreateLifecycleTemplate = z.infer<typeof createLifecycleTemplateSchema>;
+export type CreateLifecycleTemplateInput = z.input<typeof createLifecycleTemplateSchema>;
 export type UpdateLifecycleTemplate = z.infer<typeof updateLifecycleTemplateSchema>;
 export type PutProjectLifecycle = z.infer<typeof putProjectLifecycleSchema>;
 export type PutProjectLifecycleInput = z.input<typeof putProjectLifecycleSchema>;
@@ -193,6 +194,53 @@ export interface IssuePhaseResponse extends IssuePhaseSummary {
   phaseVersion: number;
   phaseEnteredAt: Date | string | null;
 }
+
+export interface LifecycleTemplatePreset {
+  key: string;
+  name: string;
+  description: string;
+  phases: LifecyclePhaseInput[];
+}
+
+/**
+ * Built-in starting points, available without per-company setup. They carry no
+ * owners or reviewers: those are company agents, chosen after applying.
+ */
+export const LIFECYCLE_TEMPLATE_PRESETS: readonly LifecycleTemplatePreset[] = [
+  {
+    key: "sdlc",
+    name: "Software delivery (SDLC)",
+    description: "Requirements through release, with documents, a pull request and rework from testing and UAT.",
+    phases: [
+      { key: "requirements", name: "Requirements", instructions: "Capture user stories and acceptance criteria in the `requirements` task document.",
+        exitGate: { requiredDocuments: ["requirements"] } },
+      { key: "design", name: "Design", instructions: "Describe the approach, data model and risks in the `design` task document.",
+        exitGate: { requiredDocuments: ["design"] } },
+      { key: "development", name: "Development", instructions: "Implement the design and open a pull request. Finish or cancel any sub-tasks.",
+        exitGate: { requiredWorkProductTypes: ["pull_request"], requireChildrenTerminal: true } },
+      { key: "testing", name: "Testing", instructions: "Verify the acceptance criteria. Record results in the `test-report` task document; send failures back to Development.",
+        exitGate: { requiredDocuments: ["test-report"] }, reworkTo: ["development"] },
+      { key: "uat", name: "UAT", instructions: "The product owner confirms the change meets the requirements.", reworkTo: ["development"] },
+      { key: "deploy", name: "Deploy", instructions: "Deploy and record what was released in the `deploy-log` task document.",
+        exitGate: { requiredDocuments: ["deploy-log"] }, reworkTo: ["development"] },
+      { key: "release", name: "Release", kind: "terminal", instructions: "Announce the release and close the task." },
+    ],
+  },
+  {
+    key: "bugfix",
+    name: "Bug fix",
+    description: "Triage, fix with a pull request, verify, ship.",
+    phases: [
+      { key: "triage", name: "Triage", instructions: "Reproduce the bug and record steps, impact and root cause in the `triage` task document.",
+        exitGate: { requiredDocuments: ["triage"] } },
+      { key: "fix", name: "Fix", instructions: "Fix the root cause with a regression test and open a pull request.",
+        exitGate: { requiredWorkProductTypes: ["pull_request"] } },
+      { key: "verify", name: "Verify", instructions: "Confirm the fix with the original reproduction steps; send it back to Fix if it still fails.",
+        reworkTo: ["fix"] },
+      { key: "ship", name: "Ship", kind: "terminal", instructions: "Release the fix and close the task." },
+    ],
+  },
+];
 
 /** Observable facts about an issue, gathered by the server when a phase exit is requested. */
 export interface LifecyclePhaseGateFacts {

@@ -2661,7 +2661,16 @@ detail shows a Lifecycle section with the phase stepper, unmet gate items,
 instructions, history and a **Move phase** dialog (rework or board override,
 reason required). The project task list can group by phase in lifecycle order;
 phase groups offer no per-group create because new tasks start in the first
-phase. See [project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
+phase.
+
+Built-in presets (`LIFECYCLE_TEMPLATE_PRESETS`: Software delivery and Bug fix) are
+shared constants, not stored rows, and carry no owners. The editor's **Start
+from** fills the form from a preset or company template for review before saving,
+and **Save as company template** creates a template from the current phases. The
+`paperclipai lifecycle` CLI covers presets, templates, project lifecycle get/set,
+task phase, history and rework/override, using the same shared validators. User
+guide: [PROJECT-LIFECYCLES.md](PROJECT-LIFECYCLES.md). See
+[project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
 
 Company-managed [Prompt Injection Prevention](prompt-injection-prevention.md)
 optionally classifies existing tool-result boundaries through a shared OpenRouter

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { LIFECYCLE_TEMPLATE_PRESETS, lifecyclePhaseListSchema } from "@paperclipai/shared";
 import type {
   LifecycleMode,
   LifecyclePhaseExitGate,
@@ -46,7 +47,10 @@ const WORK_PRODUCT_TYPES = [
   ["runtime_service", "Runtime service"],
 ] as const;
 
-const SDLC_EXAMPLE = ["Requirements", "Design", "Development", "Testing", "UAT", "Deploy", "Release"];
+/** Drafts for a preset or saved template's phases; owners stay unassigned for presets. */
+export function draftsFromPhaseInputs(phases: LifecyclePhaseInput[]): PhaseDraft[] {
+  return draftsFromLifecycle(lifecyclePhaseListSchema.parse(phases));
+}
 
 let draftCounter = 0;
 const nextDraftId = () => `draft-${++draftCounter}`;
@@ -154,7 +158,7 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
   const lifecycle = lifecycleQuery.data ?? null;
   const [mode, setMode] = useState<LifecycleMode>("off");
   const [drafts, setDrafts] = useState<PhaseDraft[]>([]);
-  const [templateId, setTemplateId] = useState("");
+  const [startSource, setStartSource] = useState("");
   const [loadedVersion, setLoadedVersion] = useState<number | null | undefined>(undefined);
 
   // Reset the form whenever a different saved version arrives.
@@ -179,14 +183,30 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
     }),
     onSuccess: onSaved,
   });
-  const applyTemplate = useMutation({
-    mutationFn: () => projectLifecyclesApi.putProjectLifecycle(projectId, {
-      mode: mode === "off" ? "advisory" : mode,
-      templateId,
-      ...(lifecycle ? { expectedVersion: lifecycle.version } : {}),
+  const [templateKey, setTemplateKey] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const saveTemplate = useMutation({
+    mutationFn: () => projectLifecyclesApi.createTemplate(companyId, {
+      key: templateKey.trim(),
+      name: templateName.trim(),
+      phases: phasesFromDrafts(drafts),
     }),
-    onSuccess: onSaved,
+    onSuccess: async () => {
+      setTemplateKey("");
+      setTemplateName("");
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lifecycleTemplates.list(companyId) });
+    },
   });
+  /** Fills the form from a preset (`preset:<key>`) or company template (`template:<id>`); nothing is saved yet. */
+  const startFrom = (source: string) => {
+    const [kind, id] = source.split(":") as [string, string];
+    const phases = kind === "preset"
+      ? LIFECYCLE_TEMPLATE_PRESETS.find((preset) => preset.key === id)?.phases
+      : templatesQuery.data?.find((template) => template.id === id)?.phases;
+    if (!phases) return;
+    setDrafts(draftsFromPhaseInputs(phases));
+    if (mode === "off") setMode("advisory");
+  };
 
   const update = (draftId: string, patch: Partial<PhaseDraft>) =>
     setDrafts((current) => current.map((draft) => {
@@ -216,7 +236,7 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
     return <p className="text-sm text-destructive">Could not load the lifecycle: {(lifecycleQuery.error as Error).message}</p>;
   }
 
-  const saveError = (save.error ?? applyTemplate.error) as Error | null;
+  const saveError = save.error as Error | null;
   const templates = templatesQuery.data ?? [];
 
   return (
@@ -238,27 +258,34 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
             <option value="enforced">Enforced (block unmet gates)</option>
           </NativeSelect>
         </label>
-        {templates.length > 0 ? (
-          <div className="flex items-end gap-2">
-            <label className="space-y-1">
-              <span className="block text-xs text-muted-foreground">Start from template</span>
-              <NativeSelect value={templateId} onChange={(event) => setTemplateId(event.target.value)} aria-label="Lifecycle template">
-                <option value="">Choose a template</option>
-                {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-              </NativeSelect>
-            </label>
-            <Button variant="outline" disabled={!templateId || applyTemplate.isPending} onClick={() => applyTemplate.mutate()}>
-              Apply
-            </Button>
-          </div>
-        ) : null}
+        <div className="flex items-end gap-2">
+          <label className="space-y-1">
+            <span className="block text-xs text-muted-foreground">Start from</span>
+            <NativeSelect value={startSource} onChange={(event) => setStartSource(event.target.value)} aria-label="Start from">
+              <option value="">Choose a preset or template</option>
+              <optgroup label="Built-in">
+                {LIFECYCLE_TEMPLATE_PRESETS.map((preset) => <option key={preset.key} value={`preset:${preset.key}`}>{preset.name}</option>)}
+              </optgroup>
+              {templates.length > 0 ? (
+                <optgroup label="Company templates">
+                  {templates.map((template) => <option key={template.id} value={`template:${template.id}`}>{template.name}</option>)}
+                </optgroup>
+              ) : null}
+            </NativeSelect>
+          </label>
+          <Button variant="outline" disabled={!startSource} onClick={() => startFrom(startSource)}>Replace phases</Button>
+        </div>
       </div>
 
       {drafts.length === 0 ? (
         <div className="space-y-2 rounded-lg border border-dashed border-border p-4">
           <p className="text-sm text-muted-foreground">No phases yet.</p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDrafts(SDLC_EXAMPLE.map(blankDraft))}>Use SDLC example</Button>
+            {LIFECYCLE_TEMPLATE_PRESETS.map((preset) => (
+              <Button key={preset.key} variant="outline" size="sm" onClick={() => startFrom(`preset:${preset.key}`)} title={preset.description}>
+                Use {preset.name}
+              </Button>
+            ))}
             <Button variant="outline" size="sm" onClick={() => setDrafts([blankDraft("Release")])}>Start empty</Button>
           </div>
         </div>
@@ -416,6 +443,31 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
         </Button>
       ) : null}
 
+      {drafts.length > 0 ? (
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <p className="text-sm font-medium">Save as company template</p>
+          <p className="text-xs text-muted-foreground">Reuse these phases in other projects. Later edits to the template do not change projects that already use it.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="space-y-1">
+              <span className="block text-xs text-muted-foreground">Template name</span>
+              <Input value={templateName} onChange={(event) => {
+                setTemplateName(event.target.value);
+                setTemplateKey(phaseKeyFromName(event.target.value));
+              }} aria-label="Template name" />
+            </label>
+            <label className="space-y-1">
+              <span className="block text-xs text-muted-foreground">Key</span>
+              <Input value={templateKey} onChange={(event) => setTemplateKey(event.target.value)} className="font-mono" aria-label="Template key" />
+            </label>
+            <Button variant="outline" disabled={!templateName.trim() || !templateKey.trim() || saveTemplate.isPending} onClick={() => saveTemplate.mutate()}>
+              {saveTemplate.isPending ? "Saving…" : "Save as template"}
+            </Button>
+          </div>
+          {saveTemplate.error ? <p className="text-sm text-destructive">{(saveTemplate.error as Error).message}</p> : null}
+          {saveTemplate.isSuccess ? <p className="text-sm text-muted-foreground">Template saved.</p> : null}
+        </div>
+      ) : null}
+
       {saveError ? <p className="text-sm text-destructive">{saveError.message}</p> : null}
 
       <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
@@ -426,7 +478,6 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
             setMode(lifecycle?.mode ?? "off");
             setDrafts(lifecycle ? draftsFromLifecycle(lifecycle.phases) : []);
             save.reset();
-            applyTemplate.reset();
           }}
         >
           Discard changes

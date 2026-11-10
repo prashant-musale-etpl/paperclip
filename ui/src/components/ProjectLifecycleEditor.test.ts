@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { lifecyclePhaseListSchema } from "@paperclipai/shared";
-import { draftsFromLifecycle, phaseKeyFromName, phasesFromDrafts } from "./ProjectLifecycleEditor";
+import { LIFECYCLE_TEMPLATE_PRESETS, lifecyclePhaseListSchema } from "@paperclipai/shared";
+import { draftsFromLifecycle, draftsFromPhaseInputs, phaseKeyFromName, phasesFromDrafts } from "./ProjectLifecycleEditor";
 
 describe("lifecycle editor drafts", () => {
   it("derives phase keys from names", () => {
@@ -39,5 +39,12 @@ describe("lifecycle editor drafts", () => {
     ]));
     drafts[0]!.key = "development";
     expect(phasesFromDrafts(drafts)[1]!.reworkTo).toEqual(["development"]);
+  });
+
+  it("loads each built-in preset into the form without changing it", () => {
+    for (const preset of LIFECYCLE_TEMPLATE_PRESETS) {
+      const expected = lifecyclePhaseListSchema.parse(preset.phases);
+      expect(lifecyclePhaseListSchema.parse(phasesFromDrafts(draftsFromPhaseInputs(preset.phases))), preset.key).toEqual(expected);
+    }
   });
 });

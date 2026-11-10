@@ -172,7 +172,8 @@ API: `present` — representative operation IDs:
 Agent access: `partial` — Agents read templates, project lifecycles and task phases
 over REST, and receive their task's phase in run context. Completing a task runs the
 phase gate. The assigned agent may request rework to an allowed earlier phase;
-lifecycle configuration and override are board-only. No native tools yet.
+lifecycle configuration and override are board-only. The `paperclipai lifecycle`
+CLI wraps the same REST operations; there are no native tools.
 
 Policy: Requires `enableProjectLifecycles`, company access and project read access.
 Phase owners and stage participants must belong to the same company.

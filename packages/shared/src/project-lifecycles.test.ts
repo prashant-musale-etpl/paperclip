@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  createLifecycleTemplateSchema,
   evaluateLifecyclePhaseExitGate,
   issuePhaseTransitionRequestSchema,
+  LIFECYCLE_TEMPLATE_PRESETS,
   lifecyclePhaseExitGateSchema,
   lifecyclePhaseListSchema,
   putProjectLifecycleSchema,
@@ -78,5 +80,14 @@ describe("issuePhaseTransitionRequestSchema", () => {
     expect(issuePhaseTransitionRequestSchema.safeParse({ kind: "rework", toPhaseKey: "development", reason: "Bugs" }).success).toBe(true);
     expect(issuePhaseTransitionRequestSchema.safeParse({ kind: "rework", toPhaseKey: "development", reason: "  " }).success).toBe(false);
     expect(issuePhaseTransitionRequestSchema.safeParse({ kind: "advance", toPhaseKey: "design", reason: "Skip" }).success).toBe(false);
+  });
+});
+
+describe("LIFECYCLE_TEMPLATE_PRESETS", () => {
+  it("are valid lifecycle templates with unique keys", () => {
+    expect(new Set(LIFECYCLE_TEMPLATE_PRESETS.map((preset) => preset.key)).size).toBe(LIFECYCLE_TEMPLATE_PRESETS.length);
+    for (const preset of LIFECYCLE_TEMPLATE_PRESETS) {
+      expect(createLifecycleTemplateSchema.safeParse(preset).success, preset.key).toBe(true);
+    }
   });
 });

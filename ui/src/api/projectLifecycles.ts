@@ -1,5 +1,5 @@
 import type {
-  CreateLifecycleTemplate,
+  CreateLifecycleTemplateInput,
   IssuePhaseResponse,
   IssuePhaseTransition,
   IssuePhaseTransitionRequest,
@@ -22,7 +22,7 @@ export type PhaseTransitionResult = {
 export const projectLifecyclesApi = {
   listTemplates: (companyId: string) =>
     api.get<LifecycleTemplate[]>(`/companies/${companyId}/lifecycle-templates`),
-  createTemplate: (companyId: string, data: CreateLifecycleTemplate) =>
+  createTemplate: (companyId: string, data: CreateLifecycleTemplateInput) =>
     api.post<LifecycleTemplate>(`/companies/${companyId}/lifecycle-templates`, data),
   updateTemplate: (companyId: string, templateId: string, data: UpdateLifecycleTemplate) =>
     api.patch<LifecycleTemplate>(`/companies/${companyId}/lifecycle-templates/${templateId}`, data),

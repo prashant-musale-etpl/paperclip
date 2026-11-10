@@ -1,7 +1,6 @@
 # Project lifecycles: configurable, enforced phases per project
 
-Status: step 1 implemented (configuration layer behind
-`experimental.enableProjectLifecycles`). Decision 2026-10-24: build per-task
+Status: steps 1–4 implemented behind `experimental.enableProjectLifecycles`. Decision 2026-10-24: build per-task
 phases first; a waterfall project can be approximated by one top-level
 "Project delivery" task with sub-tasks. A project-level phase mode may follow.
 
@@ -229,7 +228,11 @@ are unaffected, so no data backfill is needed.
    Grouping is a list option rather than kanban columns; the board view stays
    grouped by status. Template authoring (save as template) remains API-only.
 4. PR 4 – seeded templates (SDLC, Bugfix), docs (SPEC-implementation, maps),
-   CLI support.
+   CLI support. **Done**: presets are shared constants rather than seeded rows
+   (no per-company migration; owners stay unassigned), the editor gained
+   **Start from** and **Save as company template**, the `paperclipai lifecycle`
+   CLI group covers templates, project lifecycles and task phases, and
+   `doc/PROJECT-LIFECYCLES.md` is the user guide.
 
 ## Open questions
 
