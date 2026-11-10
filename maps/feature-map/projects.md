@@ -37,6 +37,12 @@ provider or Core/local choice. Conflicting defaults remain visible for repair.
 
 Open `/projects/:projectId/configuration`, use **Private project**, and choose **Manage access** or **View access** according to your authority. Create a private project through the supported creation surface or API when needed for a fixture.
 
+### `phase-lifecycles`
+
+With **Project lifecycles** enabled in Instance → Experimental, open
+`/projects/:projectId/lifecycle` to edit phases and mode. The Tasks tab's Group
+menu offers **Phase**, and task detail shows a **Lifecycle** section for phased tasks.
+
 ## Driving it with Playwright and the Paperclip CLI
 
 Preconditions: follow the [baseline](./README.md#before-driving-a-journey). Use a disposable project and a small repository you can access; record checkout and credential ownership.
@@ -65,9 +71,9 @@ Sources: [Project properties](../../ui/src/components/ProjectProperties.tsx), [a
 
 ### `phase-lifecycles`
 
-Automated: [task phase flow](../../server/src/__tests__/issue-phases.test.ts) covers initial phase, enforced and advisory gates, phase advance, final completion, rework/override permissions, version conflicts and same-owner wakes. [lifecycle routes](../../server/src/__tests__/project-lifecycles-routes.test.ts) cover the experimental flag gate, template copy semantics, version conflicts, board-only writes, agent reads, company boundaries and activity logging against a real database. [Contract tests](../../packages/shared/src/project-lifecycles.test.ts) cover phase ordering and gate evaluation.
+Automated: [task phase flow](../../server/src/__tests__/issue-phases.test.ts) covers initial phase, enforced and advisory gates, phase advance, final completion, rework/override permissions, version conflicts and same-owner wakes. [lifecycle routes](../../server/src/__tests__/project-lifecycles-routes.test.ts) cover the experimental flag gate, template copy semantics, version conflicts, board-only writes, agent reads, company boundaries and activity logging against a real database. [Contract tests](../../packages/shared/src/project-lifecycles.test.ts) cover phase ordering and gate evaluation. [Phase stepper](../../ui/src/components/PhaseStepper.test.tsx), [task phase panel](../../ui/src/components/IssuePhasePanel.test.tsx) and [editor drafts](../../ui/src/components/ProjectLifecycleEditor.test.ts) are component tests.
 
-Manual: Enable **Project lifecycles** in Instance → Experimental. Through the API, create a template, adopt it on a disposable project with `PUT /api/projects/:id/lifecycle`, edit the template, and confirm the project keeps its copy. Retry as an agent and confirm writes are rejected. Then create a top-level task in that project and confirm it starts in the first phase with the phase owner. Mark it done without the first phase's required document and confirm a 422 listing the gap; add the document and confirm the task moves to the next phase and owner rather than closing. There is no lifecycle editor UI yet.
+Manual: Enable **Project lifecycles** in Instance → Experimental. Through the API, create a template, adopt it on a disposable project with `PUT /api/projects/:id/lifecycle`, edit the template, and confirm the project keeps its copy. Retry as an agent and confirm writes are rejected. Then create a top-level task in that project and confirm it starts in the first phase with the phase owner. Mark it done without the first phase's required document and confirm a 422 listing the gap; add the document and confirm the task moves to the next phase and owner rather than closing. In the UI, open the project's **Lifecycle** tab to edit phases, then group the Tasks tab by **Phase** and open a task to check its Lifecycle section and Move phase dialog.
 
 ## Gotchas
 

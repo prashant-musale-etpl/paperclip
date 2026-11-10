@@ -9,6 +9,7 @@ import {
 } from "@paperclipai/db";
 import {
   evaluateLifecyclePhaseExitGate,
+  type IssuePhaseSummary,
   type IssuePhaseTransition,
   type IssuePhaseTransitionKind,
   type IssuePhaseTransitionRequest,
@@ -271,7 +272,7 @@ export async function listIssuePhaseTransitions(db: Db, companyId: string, issue
 }
 
 /** Phase summary for agent run context: what the current phase expects before `done`. */
-export async function describeIssuePhase(db: Db, issue: IssueRow) {
+export async function describeIssuePhase(db: Db, issue: IssueRow): Promise<IssuePhaseSummary | null> {
   if (!issue.phaseKey) return null;
   const lifecycle = await loadActiveProjectLifecycle(db, issue.companyId, issue.projectId);
   const index = lifecycle?.phases.findIndex(phase => phase.key === issue.phaseKey) ?? -1;
@@ -283,6 +284,7 @@ export async function describeIssuePhase(db: Db, issue: IssueRow) {
     phase: { key: phase.key, name: phase.name, kind: phase.kind, instructions: phase.instructions },
     position: index + 1,
     phaseCount: lifecycle.phases.length,
+    phases: lifecycle.phases.map(({ key, name, kind }) => ({ key, name, kind })),
     nextPhase: lifecycle.phases[index + 1] ? { key: lifecycle.phases[index + 1]!.key, name: lifecycle.phases[index + 1]!.name } : null,
     reworkTo: phase.reworkTo,
     reviewStageCount: phase.exitGate.stages.length,

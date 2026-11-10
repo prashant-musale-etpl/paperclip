@@ -223,7 +223,11 @@ are unaffected, so no data backfill is needed.
    Entering a phase reuses the `issue_assigned` wake (fresh session). Known gaps:
    workspace hand-back/restore routes do not add a same-owner phase wake;
    existing tasks are not backfilled.
-3. PR 3 – UI (lifecycle editor, issue stepper, board grouping).
+3. PR 3 – UI (lifecycle editor, issue stepper, board grouping). **Done**: project
+   Lifecycle tab editor, task Lifecycle section (`PhaseStepper`, gate checklist,
+   history, Move phase dialog), and "Phase" grouping in the project task list.
+   Grouping is a list option rather than kanban columns; the board view stays
+   grouped by status. Template authoring (save as template) remains API-only.
 4. PR 4 – seeded templates (SDLC, Bugfix), docs (SPEC-implementation, maps),
    CLI support.
 

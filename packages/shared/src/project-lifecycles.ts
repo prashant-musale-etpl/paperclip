@@ -128,6 +128,7 @@ export type LifecyclePhaseDefinition = z.infer<typeof lifecyclePhaseSchema>;
 export type CreateLifecycleTemplate = z.infer<typeof createLifecycleTemplateSchema>;
 export type UpdateLifecycleTemplate = z.infer<typeof updateLifecycleTemplateSchema>;
 export type PutProjectLifecycle = z.infer<typeof putProjectLifecycleSchema>;
+export type PutProjectLifecycleInput = z.input<typeof putProjectLifecycleSchema>;
 
 export interface LifecycleTemplate {
   id: string;
@@ -171,6 +172,26 @@ export interface IssuePhaseTransition {
   actorUserId: string | null;
   runId: string | null;
   createdAt: Date | string;
+}
+
+/** A task's place in its project lifecycle, as returned by `GET /issues/:id/phase`. */
+export interface IssuePhaseSummary {
+  mode: Exclude<LifecycleMode, "off">;
+  phase: { key: string; name: string; kind: LifecyclePhaseKind; instructions: string | null };
+  /** 1-based position of the current phase. */
+  position: number;
+  phaseCount: number;
+  phases: Array<{ key: string; name: string; kind: LifecyclePhaseKind }>;
+  nextPhase: { key: string; name: string } | null;
+  reworkTo: string[];
+  reviewStageCount: number;
+  unmetGate: LifecyclePhaseGateGap[];
+}
+
+export interface IssuePhaseResponse extends IssuePhaseSummary {
+  issueId: string;
+  phaseVersion: number;
+  phaseEnteredAt: Date | string | null;
 }
 
 /** Observable facts about an issue, gathered by the server when a phase exit is requested. */

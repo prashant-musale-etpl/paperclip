@@ -2649,8 +2649,19 @@ the ordinary wake, on the native status path through the committer's durable
 queue. Agent runs receive `paperclipLifecyclePhase` in context and a phase
 section in the task text: the phase, its instructions, the next phase and the
 unmet gate items. Existing tasks are not backfilled; sub-tasks and tasks moved
-into a lifecycle project later have no phase unless the board overrides. See
-[project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
+into a lifecycle project later have no phase unless the board overrides.
+
+Board UI, while the setting is on: a project **Lifecycle** tab
+(`/projects/:id/lifecycle`) edits mode and ordered phases (name, key, owner
+agent, reviewer agent, required document keys, required work product types,
+sub-task requirement, rework targets and owner instructions), applies a company
+template, and saves with `expectedVersion`. The last phase is always the final
+one. Review stages and user owners set through the API are preserved. Task
+detail shows a Lifecycle section with the phase stepper, unmet gate items,
+instructions, history and a **Move phase** dialog (rework or board override,
+reason required). The project task list can group by phase in lifecycle order;
+phase groups offer no per-group create because new tasks start in the first
+phase. See [project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
 
 Company-managed [Prompt Injection Prevention](prompt-injection-prevention.md)
 optionally classifies existing tool-result boundaries through a shared OpenRouter
