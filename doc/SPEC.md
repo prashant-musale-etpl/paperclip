@@ -853,6 +853,17 @@ A company may use a shared API model to acknowledge accepted human messages acro
 Pipelines is no longer a product feature. Its database tables remain for existing
 data preservation; Cases and Routines continue independently.
 
+### Experimental project lifecycles
+
+Each project may define its own ordered phases, such as Requirements, Design,
+Development, Testing, UAT, Deploy and Release, each with an owner and exit gate.
+Phases decorate ordinary projects and tasks rather than introducing a separate
+work object. New top-level tasks start in the first phase; completing a task runs
+its phase's exit gate and moves it to the next phase, and only the final phase
+closes it. Agents can send work back to configured earlier phases; the board can
+override. The contract is in `SPEC-implementation.md`; the user guide is
+`doc/PROJECT-LIFECYCLES.md`.
+
 ### Recent task navigation summaries
 
 Recent-task navigation refreshes a bounded, authorized summary projection for

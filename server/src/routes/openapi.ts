@@ -3,6 +3,7 @@ import { slackTestMessageSchema, slackTestMessageResultSchema, slackManagerAutho
 import { experimentalApiMetadata } from "./experimental-api-metadata.js";
 import { ATTENTION_SOURCE_KINDS } from "@paperclipai/shared";
 import { agentCaseHandoffSchema, caseWorkflowDocumentTextSchema, doneCaseHandoffSchema, createWorkflowSchema, updateWorkflowSchema, listWorkflowsSchema, readWorkflowQuerySchema } from "@paperclipai/shared";
+import { createLifecycleTemplateSchema, updateLifecycleTemplateSchema, listLifecycleTemplatesQuerySchema, putProjectLifecycleSchema, issuePhaseTransitionRequestSchema } from "@paperclipai/shared";
 import {
   experimentalApiPaths,
   experimentalApiQueries,
@@ -13056,6 +13057,33 @@ for (const [method, path, body, summary] of [
   request: { params: path.includes("{companyId}") ? z.object({ companyId: z.string().uuid() }) : z.object({ id: z.string().uuid() }),
     ...(body ? { body: jsonBody(body) } : {}), ...(method === "get" ? { query: path.includes("{companyId}") ? listWorkflowsSchema : readWorkflowQuerySchema } : {}) },
   responses: { [method === "post" ? 201 : 200]: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict } });
+
+for (const [method, path, body, summary] of [
+  ["get", "/api/companies/{companyId}/lifecycle-templates", undefined, "List project lifecycle templates"],
+  ["post", "/api/companies/{companyId}/lifecycle-templates", createLifecycleTemplateSchema, "Create a project lifecycle template"],
+  ["get", "/api/companies/{companyId}/lifecycle-templates/{templateId}", undefined, "Read a project lifecycle template"],
+  ["patch", "/api/companies/{companyId}/lifecycle-templates/{templateId}", updateLifecycleTemplateSchema, "Update or archive a project lifecycle template"],
+  ["get", "/api/projects/{id}/lifecycle", undefined, "Read a project's lifecycle phases"],
+  ["put", "/api/projects/{id}/lifecycle", putProjectLifecycleSchema, "Replace a project's lifecycle from a template or explicit phases"],
+] as const) registry.registerPath({ method, path, tags: ["Projects"], summary,
+  description: "Requires enableProjectLifecycles and company access; project routes also require project read access. Writes are board-only and logged. Phases are ordered with exactly one terminal phase last; rework targets must be earlier phases. Adopting a template copies its phases, so later template edits do not change existing projects. PUT accepts expectedVersion and returns 409 when the lifecycle changed.",
+  request: {
+    params: z.object(Object.fromEntries([...path.matchAll(/\{([^}]+)\}/g)].map(match => [match[1], z.string().uuid()]))),
+    ...(body ? { body: jsonBody(body) } : {}),
+    ...(method === "get" && path.endsWith("lifecycle-templates") ? { query: listLifecycleTemplatesQuerySchema } : {}),
+  },
+  responses: { [method === "post" ? 201 : 200]: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound,
+    ...(method === "get" ? {} : { 409: r.conflict, 422: r.unprocessable }) } });
+
+for (const [method, path, body, summary] of [
+  ["get", "/api/issues/{id}/phase", undefined, "Read a task's lifecycle phase, instructions and unmet exit-gate items"],
+  ["get", "/api/issues/{id}/phase-transitions", undefined, "List a task's lifecycle phase history"],
+  ["post", "/api/issues/{id}/phase-transitions", issuePhaseTransitionRequestSchema, "Send a task back for rework or override its phase"],
+] as const) registry.registerPath({ method, path, tags: ["Issues"], summary,
+  description: "Requires enableProjectLifecycles and task access. Tasks advance by being marked done: in an enforced lifecycle an unmet exit gate returns 422 phase_gate_unmet, and a non-final phase moves to the next phase instead of closing. POST supports rework to one of the current phase's configured rework targets (board or the assigned agent) and override to any phase (board only); a reason is required and expectedPhaseVersion returns 409 when stale.",
+  request: { params: z.object({ id: z.string().uuid() }), ...(body ? { body: jsonBody(body) } : {}) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound,
+    ...(method === "post" ? { 409: r.conflict, 422: r.unprocessable } : {}) } });
 
 for (const [method, path, body] of experimentalApiPaths) {
   const query = experimentalApiQueries[`${method.toUpperCase()} ${path}`];

@@ -217,6 +217,11 @@ import {
   warnTeam,
 } from "@/pages/TeamCatalog.fixtures";
 import type { IssueWorkProduct } from "@paperclipai/shared";
+import { PhaseStepper, type PhaseStepperPhase } from "@/components/PhaseStepper";
+
+const DESIGN_GUIDE_PHASES: PhaseStepperPhase[] = ["Requirements", "Design", "Development", "Testing", "UAT", "Release"].map(
+  (name, index, all) => ({ key: name.toLowerCase(), name, kind: index === all.length - 1 ? "terminal" : "work" }),
+);
 
 /* ------------------------------------------------------------------ */
 /*  Sample data for the Issue Output surface showcase                  */
@@ -568,7 +573,7 @@ export function DesignGuide() {
                 "FilterBar", "InlineEditor", "PageSkeleton", "Identity", "CommentThread", "MarkdownEditor",
                 "PropertiesPanel", "Sidebar", "CommandPalette", "EnvironmentVariablesEditor",
                 "InlineBanner", "BuiltInAgentGate", "BuiltInLifecycleChip", "CollectionToolbar",
-                "IssueRow", "ContextualSidebarFrame",
+                "IssueRow", "ContextualSidebarFrame", "PhaseStepper",
               ].map((name) => (
                 <Badge key={name} variant="ghost" className="font-mono text-(length:--text-nano)">
                   {name}
@@ -1818,6 +1823,23 @@ export function DesignGuide() {
               onClick={() => {}}
             />
           </div>
+        </div>
+      </Section>
+
+      {/* ============================================================ */}
+      {/*  PHASE STEPPER                                                */}
+      {/* ============================================================ */}
+      <Section title="Phase Stepper">
+        <div className="grid gap-6 md:grid-cols-3">
+          <SubSection title="First phase">
+            <PhaseStepper phases={DESIGN_GUIDE_PHASES} currentKey="requirements" />
+          </SubSection>
+          <SubSection title="Mid lifecycle">
+            <PhaseStepper phases={DESIGN_GUIDE_PHASES} currentKey="testing" />
+          </SubSection>
+          <SubSection title="Completed">
+            <PhaseStepper phases={DESIGN_GUIDE_PHASES} currentKey="release" completed />
+          </SubSection>
         </div>
       </Section>
 

@@ -242,6 +242,7 @@ export function InstanceExperimentalSettings() {
   const enableDecisions = experimentalQuery.data?.enableDecisions === true;
   const enableGoalsSidebarLink = experimentalQuery.data?.enableGoalsSidebarLink === true;
   const enableCases = experimentalQuery.data?.enableCases === true;
+  const enableProjectLifecycles = experimentalQuery.data?.enableProjectLifecycles === true;
   const enableServerInfoDebugView = experimentalQuery.data?.enableServerInfoDebugView === true;
   const enablePaperclipDeveloperMode =
     experimentalQuery.data?.enablePaperclipDeveloperMode === true;
@@ -554,6 +555,18 @@ export function InstanceExperimentalSettings() {
           settingKey="enableNativeRunner"
           managed={managedKeys.enableNativeRunner}
           ariaLabel="Toggle Paperclip Runner experimental setting"
+        />
+
+        <ExperimentalToggleCard
+          title="Project lifecycles"
+          description="Give each project its own ordered phases, such as Requirements, Design, Development, Testing and Release, with an owner and exit gate per phase."
+          footnote="Turning this off blocks the lifecycle API; saved lifecycle configuration is kept."
+          checked={enableProjectLifecycles}
+          onCheckedChange={(checked) => toggleMutation.mutate({ enableProjectLifecycles: checked })}
+          disabled={toggleMutation.isPending}
+          settingKey="enableProjectLifecycles"
+          managed={managedKeys.enableProjectLifecycles}
+          ariaLabel="Toggle project lifecycles experimental setting"
         />
 
         <ExperimentalToggleCard

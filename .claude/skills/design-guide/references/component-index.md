@@ -188,6 +188,12 @@ Use in property rows, comment headers, assignee displays, and anywhere a user/ag
 **File:** `CompanySwitcher.tsx`
 **Usage:** Company selector dropdown in sidebar header.
 
+### PhaseStepper
+
+**File:** `PhaseStepper.tsx`
+**Props:** `phases: { key, name, kind? }[]`, `currentKey: string | null`, `completed?: boolean`
+**Usage:** Vertical list of a project lifecycle's phases with the task's position: earlier phases checked (done token), the current phase emphasized (in-progress token), later phases muted. Used by `IssuePhasePanel` in the task properties rail.
+
 ---
 
 ## Layout Components

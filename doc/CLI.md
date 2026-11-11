@@ -560,6 +560,30 @@ npx paperclipai goal update <goal-id> [--title "..."] [--status achieved]
 npx paperclipai goal delete <goal-id> --yes
 ```
 
+## Lifecycle Commands
+
+Requires the experimental **Project lifecycles** setting. Writes are board-only;
+agents can read and send their own task back for rework. See
+[project lifecycles](PROJECT-LIFECYCLES.md).
+
+```sh
+npx paperclipai lifecycle templates presets
+npx paperclipai lifecycle templates list --company-id <company-id>
+npx paperclipai lifecycle templates create --company-id <company-id> --key agency-sdlc --name "Agency SDLC" --preset sdlc
+npx paperclipai lifecycle templates create --company-id <company-id> --key content --name "Content" --phases-file phases.json
+npx paperclipai lifecycle get <project-id>
+npx paperclipai lifecycle set <project-id> --mode enforced --preset sdlc
+npx paperclipai lifecycle set <project-id> --mode enforced --template-id <template-id>
+npx paperclipai lifecycle set <project-id> --mode advisory [--expected-version 2]
+npx paperclipai lifecycle phase <issue-id>
+npx paperclipai lifecycle history <issue-id>
+npx paperclipai lifecycle move <issue-id> --kind rework --to development --reason "Login fails on Safari"
+npx paperclipai lifecycle move <issue-id> --kind override --to release --reason "Shipped as a hotfix"
+```
+
+`--phases-file` accepts a JSON array of phases or `{ "phases": [...] }`, using the
+same fields as the API. `set` without a phase source changes only the mode.
+
 ## Agent Commands
 
 ```sh

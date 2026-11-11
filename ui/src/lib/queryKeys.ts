@@ -519,6 +519,14 @@ export const queryKeys = {
       ] as const,
     detail: (id: string) => ["projects", "detail", id] as const,
     accessMembers: (id: string) => ["projects", "access-members", id] as const,
+    lifecycle: (id: string) => ["projects", "lifecycle", id] as const,
+  },
+  lifecycleTemplates: {
+    list: (companyId: string) => ["lifecycle-templates", companyId] as const,
+  },
+  issuePhases: {
+    detail: (issueId: string) => ["issue-phases", issueId] as const,
+    transitions: (issueId: string) => ["issue-phases", issueId, "transitions"] as const,
   },
   cases: {
     handoffs: (id: string) => ["cases", "handoffs", id] as const,

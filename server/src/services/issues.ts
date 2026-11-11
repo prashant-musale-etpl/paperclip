@@ -198,6 +198,15 @@ import {
   buildInitialIssueMonitorFields,
   normalizeIssueExecutionPolicy,
 } from "./issue-execution-policy.js";
+import {
+  phaseEntryPatch,
+  planPhaseCompletion,
+  planPhaseMove,
+  planInitialPhase,
+  recordPhaseTransition,
+  SERVER_OWNED_PHASE_FIELDS,
+  type IssuePhaseMove,
+} from "./issue-phases.js";
 import { assertQualityReviewPolicyMutation, assertQualityReviewPolicyReuse, assertRequiredQualityReviewComplete, requiredQualityReview } from "./required-quality-review.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText } from "../log-redaction.js";
@@ -5105,6 +5114,9 @@ const issueListSelect = {
   assigneeAdapterOverrides: issues.assigneeAdapterOverrides,
   executionPolicy: sql<null>`null`,
   executionState: sql<null>`null`,
+  phaseKey: issues.phaseKey,
+  phaseVersion: issues.phaseVersion,
+  phaseEnteredAt: issues.phaseEnteredAt,
   monitorNextCheckAt: issues.monitorNextCheckAt,
   monitorWakeRequestedAt: issues.monitorWakeRequestedAt,
   monitorLastTriggeredAt: issues.monitorLastTriggeredAt,
@@ -10224,21 +10236,42 @@ export function issueService(db: Db) {
         delete issueData.executionWorkspacePreference;
         delete issueData.executionWorkspaceSettings;
       }
-      if (data.assigneeAgentId && data.assigneeUserId) {
+      for (const field of SERVER_OWNED_PHASE_FIELDS) delete (issueData as Record<string, unknown>)[field];
+      // Top-level tasks in a lifecycle project start in its first phase. An
+      // explicit assignee wins; otherwise the phase owner takes the task.
+      const initialPhase = await planInitialPhase(dbOrTx as Db, companyId, issueData);
+      if (initialPhase) {
+        const entry = phaseEntryPatch(
+          { phaseVersion: 0, executionPolicy: issueData.executionPolicy ?? null, executionState: null },
+          initialPhase.phase,
+          new Date(),
+        );
+        Object.assign(issueData, {
+          phaseKey: entry.phaseKey,
+          phaseVersion: entry.phaseVersion,
+          phaseEnteredAt: entry.phaseEnteredAt,
+          executionPolicy: entry.executionPolicy,
+        });
+        if (!issueData.assigneeAgentId && !issueData.assigneeUserId) {
+          if (entry.assigneeAgentId) issueData.assigneeAgentId = entry.assigneeAgentId;
+          if (entry.assigneeUserId) issueData.assigneeUserId = entry.assigneeUserId;
+        }
+      }
+      if (issueData.assigneeAgentId && issueData.assigneeUserId) {
         throw unprocessable("Issue can only have one assignee");
       }
-      if (data.assigneeAgentId) {
-        await assertAssignableAgent(db, companyId, data.assigneeAgentId, {
+      if (issueData.assigneeAgentId) {
+        await assertAssignableAgent(db, companyId, issueData.assigneeAgentId, {
           kind: "work",
         });
       }
-      if (data.assigneeUserId) {
-        await assertAssignableUser(companyId, data.assigneeUserId);
+      if (issueData.assigneeUserId) {
+        await assertAssignableUser(companyId, issueData.assigneeUserId);
       }
       if (
-        data.status === "in_progress" &&
-        !data.assigneeAgentId &&
-        !data.assigneeUserId
+        issueData.status === "in_progress" &&
+        !issueData.assigneeAgentId &&
+        !issueData.assigneeUserId
       ) {
         throw unprocessable("in_progress issues require an assignee");
       }
@@ -10726,6 +10759,18 @@ export function issueService(db: Db) {
         await notifyIssueAttentionRetentionWork(tx, { companyId, issueId: values.id, parentId: values.parentId, originKind: values.originKind, originId: values.originId });
         if (values.originKind === "routine_execution") await notifyRoutineExecutionStatus(tx, values.id, companyId);
         const [issue] = await tx.insert(issues).values(values).returning();
+        if (initialPhase) {
+          const { publication } = await recordPhaseTransition(tx as unknown as Db, issue, {
+            projectId: initialPhase.lifecycle.projectId,
+            fromPhaseKey: null,
+            toPhaseKey: initialPhase.phase.key,
+            kind: "initial",
+            lifecycleMode: initialPhase.lifecycle.mode,
+            reason: null,
+            gateGaps: [],
+          }, { agentId: issueData.createdByAgentId ?? null, userId: issueData.createdByUserId ?? null, runId: actorRunId ?? null });
+          initialPhasePublications.push(publication);
+        }
         await attachOwnedDraftImages(tx, issue, issue.description, { userId: issueData.createdByUserId, agentId: issueData.createdByAgentId });
         if (issue.visibility === "private" && !inheritedPrivateSubtree && issueData.createdByAgentId) {
           await tx.insert(issueAccessGrants).values({
@@ -10791,7 +10836,12 @@ export function issueService(db: Db) {
         );
         return withRelations;
       };
-      if (dbOrTx === db) return db.transaction(persist);
+      const initialPhasePublications: ActivityPublication[] = [];
+      if (dbOrTx === db) {
+        const created = await db.transaction(persist);
+        for (const publication of initialPhasePublications) publishActivity(publication);
+        return created;
+      }
       return persist(dbOrTx as DbTransaction);
     },
 
@@ -11139,6 +11189,8 @@ export function issueService(db: Db) {
         workspaceSelectionActor?: AuthorizationActor;
         expectedExecutionPolicy?: typeof issues.$inferInsert.executionPolicy;
         expectedStatusVersion?: number;
+        /** Server-owned explicit lifecycle phase move; never accepted from HTTP input. */
+        phaseMove?: IssuePhaseMove;
       },
       dbOrTx: any = db,
       postCommitActivityPublications?: ActivityPublication[],
@@ -11190,8 +11242,10 @@ export function issueService(db: Db) {
         workspaceSelectionActor,
         expectedExecutionPolicy,
         expectedStatusVersion,
+        phaseMove,
         ...issueData
       } = data;
+      for (const field of SERVER_OWNED_PHASE_FIELDS) delete issueData[field];
       if (expectedStatusVersion !== undefined && (
         issueData.status !== "todo" || Object.keys(issueData).some(key => key !== "status") ||
         nextLabelIds !== undefined || blockedByIssueIds !== undefined || expectedExecutionPolicy !== undefined
@@ -11260,6 +11314,14 @@ export function issueService(db: Db) {
       if (issueData.status) {
         assertTransition(existing.status, issueData.status);
       }
+      // Project lifecycle: an explicit move, or a completion that must pass the
+      // phase exit gate and may advance to the next phase instead of closing.
+      const phasePlan = phaseMove
+        ? await planPhaseMove(dbOrTx, existing, phaseMove, new Date())
+        : issueData.status === "done" && existing.status !== "done"
+          ? await planPhaseCompletion(dbOrTx, existing, new Date())
+          : null;
+      if (phasePlan) Object.assign(issueData, phasePlan.issuePatch);
 
       const patch: Partial<typeof issues.$inferInsert> = {
         ...issueData,
@@ -11450,6 +11512,9 @@ export function issueService(db: Db) {
           .for("update")
           .then((rows: Array<typeof issues.$inferSelect>) => rows[0] ?? null);
         if (!receiptExisting) return null;
+        if (phasePlan && receiptExisting.phaseVersion !== existing.phaseVersion) {
+          throw conflict("The task's phase changed; reload it and retry", { code: "issue_phase_version_changed" });
+        }
         if (issueData.executionPolicy !== undefined) assertQualityReviewPolicyMutation({ previousPolicy: receiptExisting.executionPolicy, nextPolicy: issueData.executionPolicy, actorAgentId, actorUserId });
         if ((patch.status ?? receiptExisting.status) === "done" &&
             (receiptExisting.status !== "done" || issueData.executionPolicy !== undefined)) {
@@ -11696,6 +11761,12 @@ export function issueService(db: Db) {
           .returning()
           .then((rows: Array<typeof issues.$inferSelect>) => rows[0] ?? null);
         if (!updated) return null;
+        if (phasePlan) {
+          const { publication } = await recordPhaseTransition(tx, updated, phasePlan.transition, {
+            agentId: actorAgentId ?? null, userId: actorUserId ?? null, runId: actorRunId ?? null,
+          });
+          activityPublications.push(publication);
+        }
         if (updated.status === "done") {
           await completeTerminalCaseHandoffsForIssue(tx, { companyId: updated.companyId, issueId: updated.id,
             publications: activityPublications });

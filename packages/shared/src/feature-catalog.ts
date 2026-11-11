@@ -190,6 +190,14 @@ export const INSTANCE_FEATURE_CATALOG: Record<InstanceFeatureKey, FeatureCatalog
     cloudDefault: false,
     selfHostedDefault: false,
   },
+  enableProjectLifecycles: {
+    title: "Project lifecycles",
+    description:
+      "Configure an ordered set of phases per project, such as Requirements, Design, Development and Release, each with an owner and exit gate.",
+    tier: "managed",
+    cloudDefault: false,
+    selfHostedDefault: false,
+  },
   enableAgentChat: {
     title: "Agent Chat",
     description:

@@ -793,3 +793,15 @@ provider, and keep the agent assigned with `continuationPolicy: "wake_assignee"`
 so the answer resumes verification. A handoff comment asking the user to comment
 back or reassign the task is not a confirmation card. The card records the user's
 answer; verify the provider's gate and publish result before continuing.
+
+## Lifecycle Phases
+
+Some projects define ordered phases (for example Requirements → Design →
+Development → Testing → Release). When your task has one, the run context shows
+a **Lifecycle phase** section. Do only that phase's work. Marking the task done
+completes the phase: it runs the phase's reviews and exit gate, then hands the
+task to the next phase owner. A `422` with `phase_gate_unmet` lists exactly what
+is missing (task documents, work products or open sub-tasks); add it and retry.
+To send work back to an earlier phase the current phase allows, call
+`POST /api/issues/{issueId}/phase-transitions` with
+`{"kind":"rework","toPhaseKey":"…","reason":"…"}`. Never try to skip a phase.

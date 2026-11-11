@@ -8,9 +8,9 @@ The skill/reference inventory and eval cases are the only normative behavior sou
 
 ## Baseline Counts
 
-- Skill/reference headings: 166
+- Skill/reference headings: 167
 - Eval cases: 106 across 16 groups
-- Total normative rows: 272
+- Total normative rows: 273
 - Legacy MCP aliases folded into normative rows: 42
 
 | Eval group | Cases |
@@ -75,6 +75,7 @@ The skill/reference inventory and eval cases are the only normative behavior sou
 | skill:skills/paperclip/SKILL.md:full-reference:749 | optional_agent_tool | skills/paperclip/SKILL.md:749 |
 | skill:skills/paperclip/SKILL.md:conversational-confirmation-answers:753 | always_agent_tool | skills/paperclip/SKILL.md:753 |
 | skill:skills/paperclip/SKILL.md:incidental-feedback:770 | optional_agent_tool | skills/paperclip/SKILL.md:770 |
+| skill:skills/paperclip/SKILL.md:lifecycle-phases:797 | optional_agent_tool | skills/paperclip/SKILL.md:797 |
 | skill:skills/paperclip/references/api-reference.md:paperclip-api-reference:1 | optional_agent_tool | skills/paperclip/references/api-reference.md:1 |
 | skill:skills/paperclip/references/api-reference.md:response-schemas:9 | optional_agent_tool | skills/paperclip/references/api-reference.md:9 |
 | skill:skills/paperclip/references/api-reference.md:agent-record-get-api-agents-me-or-get-api-agents-agentid:11 | optional_agent_tool | skills/paperclip/references/api-reference.md:11 |

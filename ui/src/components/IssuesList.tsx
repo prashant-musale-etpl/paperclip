@@ -172,7 +172,7 @@ export type BoardColumnPageSize = KanbanColumnPageSize;
 export type IssueViewState = IssueFilterState & {
   sortField: IssueSortField;
   sortDir: "asc" | "desc";
-  groupBy: "status" | "priority" | "assignee" | "project" | "workspace" | "parent" | "none";
+  groupBy: "status" | "priority" | "assignee" | "project" | "workspace" | "parent" | "phase" | "none";
   viewMode: "list" | "board";
   nestingEnabled: boolean;
   showDateGroupSeparators: boolean;
@@ -225,7 +225,7 @@ function normalizeIssueViewState(value: unknown): IssueViewState {
       ? parsed.sortField as IssueSortField
       : defaultViewState.sortField,
     sortDir: parsed.sortDir === "asc" ? "asc" : "desc",
-    groupBy: ["status", "priority", "assignee", "project", "workspace", "parent", "none"].includes(parsed.groupBy ?? "")
+    groupBy: ["status", "priority", "assignee", "project", "workspace", "parent", "phase", "none"].includes(parsed.groupBy ?? "")
       ? parsed.groupBy as IssueViewState["groupBy"]
       : defaultViewState.groupBy,
     viewMode: parsed.viewMode === "board" ? "board" : "list",
@@ -460,6 +460,11 @@ interface IssuesListProps {
   projects?: ProjectOption[];
   liveIssueIds?: Set<string>;
   projectId?: string;
+  /**
+   * Ordered lifecycle phases of the listed project. When set, "Phase" is offered
+   * as a grouping; without it a saved phase grouping shows the list ungrouped.
+   */
+  phaseGroups?: Array<{ key: string; name: string }>;
   viewStateKey: string;
   issueLinkState?: unknown;
   initialAssignees?: string[];
@@ -718,6 +723,7 @@ function StreamlinedIssuesList({
   projects,
   liveIssueIds,
   projectId,
+  phaseGroups,
   viewStateKey,
   issueLinkState,
   initialAssignees,
@@ -1342,8 +1348,14 @@ function StreamlinedIssuesList({
   const collectionLoading = Boolean(isLoading || externalObjectFilterLoading || (hierarchyEnabled && hierarchy.isLoading));
   useWarmTaskDetailCode(!collectionLoading && !error && filtered.length > 0);
   const baseGroupedContent = useMemo(() => {
-    if (viewState.groupBy === "none") {
+    if (viewState.groupBy === "none" || (viewState.groupBy === "phase" && !phaseGroups?.length)) {
       return [{ key: "__all", label: null as string | null, items: filtered }];
+    }
+    if (viewState.groupBy === "phase") {
+      const groups = groupBy(filtered, (issue) => issue.phaseKey ?? "__no_phase");
+      return [...phaseGroups!, { key: "__no_phase", name: "No phase" }]
+        .filter((phase) => groups[phase.key]?.length)
+        .map((phase) => ({ key: phase.key, label: phase.name, items: groups[phase.key]! }));
     }
     if (viewState.groupBy === "status") {
       const groups = groupBy(filtered, (i) => i.displayStatus ?? i.status);
@@ -1425,6 +1437,7 @@ function StreamlinedIssuesList({
     filtered,
     issueFilterWorkspaceContext,
     viewState.groupBy,
+    phaseGroups,
     agents,
     agentName,
     currentUserId,
@@ -2062,9 +2075,11 @@ function StreamlinedIssuesList({
                     ["project", "Project"],
                     ["workspace", "Workspace"],
                     ["parent", "Parent Task"],
+                    ["phase", "Phase"],
                     ["none", "None"],
                   ] as const)
                     .filter(([value]) => SHOW_TASK_PRIORITY_UI || value !== "priority")
+                    .filter(([value]) => value !== "phase" || Boolean(phaseGroups?.length))
                     .map(([value, label]) => (
                     <button
                       key={value}
@@ -2162,7 +2177,9 @@ function StreamlinedIssuesList({
                       : [...viewState.collapsedGroups, group.key],
                   });
                 }}
-                trailing={group.key === "monitoring" ? undefined : (
+                // New tasks always start in a lifecycle's first phase, so a
+                // phase group cannot offer "new task in this phase".
+                trailing={group.key === "monitoring" || viewState.groupBy === "phase" ? undefined : (
                   <Button
                     variant="ghost"
                     size="icon-xs"

@@ -17,6 +17,9 @@ import { useToastActions } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { ProjectProperties, type ProjectConfigFieldKey, type ProjectFieldSaveState } from "../components/ProjectProperties";
+import { ProjectLifecycleEditor } from "../components/ProjectLifecycleEditor";
+import { projectLifecyclesApi } from "../api/projectLifecycles";
+import { useProjectLifecyclesEnabled } from "../hooks/useProjectLifecyclesEnabled";
 import { InlineEditor } from "../components/InlineEditor";
 import { StatusBadge } from "../components/StatusBadge";
 import { ProjectTile } from "../components/ProjectTile";
@@ -51,7 +54,7 @@ import { useUpdateIssueMutation } from "../hooks/useUpdateIssueMutation";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "list" | "plugin-operations" | "workspaces" | "configuration" | "budget";
+type ProjectBaseTab = "list" | "plugin-operations" | "workspaces" | "configuration" | "lifecycle" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -67,6 +70,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "overview") return "configuration";
   if (tab === "configuration") return "configuration";
   if (tab === "budget") return "budget";
+  if (tab === "lifecycle") return "lifecycle";
   if (tab === "issues") return "list";
   if (tab === "plugin-operations") return "plugin-operations";
   if (tab === "workspaces") return "workspaces";
@@ -229,6 +233,16 @@ function ProjectIssuesList({ projectId, companyId }: { projectId: string; compan
   const { data: issues } = issuesQuery;
   const issuesView = useQueryView(issuesQuery);
   const liveIssueIds = useMemo(() => collectLiveIssueIds(liveRuns, issues), [issues, liveRuns]);
+  const { enabled: projectLifecyclesEnabled } = useProjectLifecyclesEnabled();
+  const { data: lifecycle } = useQuery({
+    queryKey: queryKeys.projects.lifecycle(projectId),
+    queryFn: () => projectLifecyclesApi.getProjectLifecycle(projectId),
+    enabled: projectLifecyclesEnabled,
+  });
+  const phaseGroups = useMemo(
+    () => lifecycle && lifecycle.mode !== "off" ? lifecycle.phases.map(({ key, name }) => ({ key, name })) : undefined,
+    [lifecycle],
+  );
 
   const updateIssue = useUpdateIssueMutation({
     companyId,
@@ -245,6 +259,7 @@ function ProjectIssuesList({ projectId, companyId }: { projectId: string; compan
       projects={projects}
       liveIssueIds={liveIssueIds}
       projectId={projectId}
+      phaseGroups={phaseGroups}
       enableAgentCreatedVisibilityFilter
       viewStateKey="paperclip:project-issues-view"
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
@@ -338,6 +353,7 @@ export function ProjectDetail() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
+  const { enabled: projectLifecyclesEnabled } = useProjectLifecyclesEnabled();
   const navigate = useNavigate();
   const location = useLocation();
   const [fieldSaveStates, setFieldSaveStates] = useState<Partial<Record<ProjectConfigFieldKey, ProjectFieldSaveState>>>({});
@@ -536,6 +552,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
       return;
     }
+    if (activeTab === "lifecycle") {
+      navigate(`/projects/${canonicalProjectRef}/lifecycle`, { replace: true });
+      return;
+    }
     if (activeTab === "plugin-operations") {
       navigate(`/projects/${canonicalProjectRef}/plugin-operations`, { replace: true });
       return;
@@ -689,6 +709,9 @@ export function ProjectDetail() {
     if (cachedTab === "budget") {
       return <Navigate to={`/projects/${canonicalProjectRef}/budget`} replace />;
     }
+    if (cachedTab === "lifecycle" && projectLifecyclesEnabled) {
+      return <Navigate to={`/projects/${canonicalProjectRef}/lifecycle`} replace />;
+    }
     if (cachedTab === "plugin-operations" && project?.managedByPlugin) {
       return <Navigate to={`/projects/${canonicalProjectRef}/plugin-operations`} replace />;
     }
@@ -732,6 +755,8 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/workspaces`);
     } else if (tab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`);
+    } else if (tab === "lifecycle") {
+      navigate(`/projects/${canonicalProjectRef}/lifecycle`);
     } else if (tab === "plugin-operations") {
       navigate(`/projects/${canonicalProjectRef}/plugin-operations`);
     } else if (tab === "configuration") {
@@ -869,6 +894,7 @@ export function ProjectDetail() {
             ...(project.managedByPlugin ? [{ value: "plugin-operations", label: "Plugin operations" }] : []),
             ...(showWorkspacesTab ? [{ value: "workspaces", label: "Workspaces" }] : []),
             { value: "configuration", label: "Configuration" },
+            ...(projectLifecyclesEnabled ? [{ value: "lifecycle", label: "Lifecycle" }] : []),
             { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({
               value: item.value,
@@ -929,6 +955,18 @@ export function ProjectDetail() {
           />
         </div>
       )}
+
+      {activeTab === "lifecycle" && resolvedCompanyId ? (
+        projectLifecyclesEnabled ? (
+          <div className="max-w-4xl">
+            <ProjectLifecycleEditor projectId={project.id} companyId={resolvedCompanyId} />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Project lifecycles are turned off. Enable them in Instance settings → Experimental.
+          </p>
+        )
+      ) : null}
 
       {activeTab === "budget" && resolvedCompanyId ? (
         <div className="max-w-3xl">

@@ -126,6 +126,7 @@ import {
 } from "../../lib/reusable-execution-workspaces";
 import { issueReviewPolicyBadge } from "../../lib/review-policy";
 import { IssueCasesPanel } from "../IssueCasesPanel";
+import { IssuePhasePanel } from "../IssuePhasePanel";
 import { ExpandRelationListButton, RemovableIssueReferencePill } from "./relation-controls";
 import { RoutineOriginRow } from "./routine-origin-row";
 import { Badge } from "@/components/ui/badge";
@@ -3019,6 +3020,11 @@ export function IssueProperties({
         )}
       </PropertySection>
 
+      {/* Experimental project lifecycle phase — self-gates on the flag and
+          renders nothing for tasks without a phase. */}
+      <div className="pt-3">
+        <IssuePhasePanel issueId={issue.id} issueStatus={issue.status} />
+      </div>
       {/* Experimental Cases rail (PAP-12969) — self-gates on the flag and
           renders nothing when no cases are linked. */}
       <div className="pt-3">

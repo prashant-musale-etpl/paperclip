@@ -412,6 +412,12 @@ export function normalizeIssueExecutionPolicy(input: unknown): IssueExecutionPol
   };
 }
 
+/** Clears review/approval stage progress while keeping monitor state, e.g. when a lifecycle phase replaces the stages. */
+export function clearExecutionStageProgress(input: unknown): IssueExecutionState | null {
+  const monitor = parseIssueExecutionState(input)?.monitor ?? null;
+  return monitor ? executionStateWithMonitor(null, monitor) : null;
+}
+
 export function parseIssueExecutionState(input: unknown): IssueExecutionState | null {
   if (input == null) return null;
   const parsed = issueExecutionStateSchema.safeParse(input);

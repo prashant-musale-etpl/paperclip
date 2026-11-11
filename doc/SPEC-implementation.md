@@ -2836,6 +2836,92 @@ and experimental setting are removed. Existing database tables and records remai
 for data preservation; there is no migration that drops or rewrites them. The
 independent Cases and Routines features remain available.
 
+### Experimental project lifecycles
+
+`experimental.enableProjectLifecycles` lets a board configure an ordered list of
+phases per project, for example Requirements → Design → Development → Testing →
+UAT → Deploy → Release. Unlike the retired Pipelines, phases attach to ordinary
+projects and (in a later step) ordinary tasks; there is no parallel work object.
+
+Company-scoped `lifecycle_templates` hold reusable phase lists. A project's
+`project_lifecycles` row holds its mode (`off`, `advisory` or `enforced`) and a
+version; `project_lifecycle_phases` holds its own copy of the phases. Adopting a
+template copies its phases, so later template edits affect only future adoptions.
+Each phase has a key, name, kind (`work` or a single last `terminal`), an optional
+agent or user owner, Markdown instructions, rework targets (earlier phases only)
+and an exit gate: required task document keys, required work product types,
+whether sub-tasks must be terminal, and review/approval stages using the issue
+execution-policy stage contract. Owners and stage participants must belong to the
+project's company.
+
+REST: `GET`/`POST /api/companies/:companyId/lifecycle-templates`,
+`GET`/`PATCH /api/companies/:companyId/lifecycle-templates/:templateId` (PATCH
+also archives), and `GET`/`PUT /api/projects/:id/lifecycle`. PUT takes a template,
+explicit phases, or neither to change only the mode, plus an optional
+`expectedVersion` that returns 409 when stale. Reads need company and project read
+access; writes are board-only because the lifecycle defines the gates agents must
+pass. Every write is activity-logged.
+
+Tasks carry a server-owned `phaseKey`, `phaseVersion` and `phaseEnteredAt`;
+callers cannot set them directly. A new top-level task (no parent, not an agent
+conversation) in a project whose lifecycle is `advisory` or `enforced` starts in
+the first phase. An explicit assignee is kept; otherwise the phase owner is
+assigned. Entering a phase sets status `todo`, assigns the phase owner when one is
+configured, replaces the task's execution-policy stages with the phase's
+review/approval stages (other policy settings and monitor state are kept) and
+resets stage progress.
+
+Tasks advance only by completing. `issueService.update` handles every accepted
+transition to `done` on a phased task, whatever the path (task API, review
+approval comment, native status decision): review/approval stages run first
+as before, then the remaining exit-gate items are checked (non-empty task
+documents with the required keys, active work products of the required types,
+terminal sub-tasks). In `enforced` mode an unmet gate returns
+`422 phase_gate_unmet` with the missing items. In `advisory` mode the gaps are
+recorded and the task moves on. A non-final phase enters the next phase instead
+of closing the task; only the final phase closes it. A task whose phase was
+removed from the lifecycle cannot be completed in `enforced` mode until the
+board moves it.
+
+`POST /api/issues/:id/phase-transitions` accepts `rework` (board or the task's
+assigned agent, only to one of the current phase's `reworkTo` targets) and
+`override` (board only, any phase, which can also place an existing unphased task
+in the lifecycle). Both need a reason, reopen closed tasks in the target phase,
+and accept `expectedPhaseVersion` (409 when stale). `GET /api/issues/:id/phase`
+returns the phase, instructions and unmet gate items; `GET
+/api/issues/:id/phase-transitions` returns the history. Every phase change
+appends an `issue_phase_transitions` row (`initial`, `advance`, `complete`,
+`rework` or `override`, with any gate gaps) and an `issue.phase_changed` activity.
+
+Entering a phase wakes the assigned agent with an `issue_assigned` wake, even
+when the owner is unchanged: on the task API and review-comment paths through
+the ordinary wake, on the native status path through the committer's durable
+queue. Agent runs receive `paperclipLifecyclePhase` in context and a phase
+section in the task text: the phase, its instructions, the next phase and the
+unmet gate items. Existing tasks are not backfilled; sub-tasks and tasks moved
+into a lifecycle project later have no phase unless the board overrides.
+
+Board UI, while the setting is on: a project **Lifecycle** tab
+(`/projects/:id/lifecycle`) edits mode and ordered phases (name, key, owner
+agent, reviewer agent, required document keys, required work product types,
+sub-task requirement, rework targets and owner instructions), applies a company
+template, and saves with `expectedVersion`. The last phase is always the final
+one. Review stages and user owners set through the API are preserved. Task
+detail shows a Lifecycle section with the phase stepper, unmet gate items,
+instructions, history and a **Move phase** dialog (rework or board override,
+reason required). The project task list can group by phase in lifecycle order;
+phase groups offer no per-group create because new tasks start in the first
+phase.
+
+Built-in presets (`LIFECYCLE_TEMPLATE_PRESETS`: Software delivery and Bug fix) are
+shared constants, not stored rows, and carry no owners. The editor's **Start
+from** fills the form from a preset or company template for review before saving,
+and **Save as company template** creates a template from the current phases. The
+`paperclipai lifecycle` CLI covers presets, templates, project lifecycle get/set,
+task phase, history and rework/override, using the same shared validators. User
+guide: [PROJECT-LIFECYCLES.md](PROJECT-LIFECYCLES.md). See
+[project lifecycle phases](plans/2026-10-24-project-lifecycle-phases.md).
+
 Company-managed [Prompt Injection Prevention](prompt-injection-prevention.md)
 optionally classifies existing tool-result boundaries through a shared OpenRouter
 connection. Settings → Connections is permanent; valid model verdicts take

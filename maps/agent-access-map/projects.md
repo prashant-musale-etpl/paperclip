@@ -154,3 +154,36 @@ Project configuration responses also expose effective workspace storage through
 read/update permissions apply. Omitted provider IDs inherit; null explicitly selects
 Core/local. [Offline API coverage](../../server/src/__tests__/project-workspace-provider.integration.test.ts)
 checks overrides and cross-company denial; live agent credential verification remains unqualified.
+
+## `phase-lifecycles`
+
+Capability ID: `projects/phase-lifecycles`.
+
+Review: `baseline`.
+
+API: `present` — representative operation IDs:
+
+- `GET /api/projects/{id}/lifecycle`.
+- `PUT /api/projects/{id}/lifecycle`.
+- `POST /api/companies/{companyId}/lifecycle-templates`.
+- `GET /api/issues/{id}/phase`.
+- `POST /api/issues/{id}/phase-transitions`.
+
+Agent access: `partial` — Agents read templates, project lifecycles and task phases
+over REST, and receive their task's phase in run context. Completing a task runs the
+phase gate. The assigned agent may request rework to an allowed earlier phase;
+lifecycle configuration and override are board-only. The `paperclipai lifecycle`
+CLI wraps the same REST operations; there are no native tools.
+
+Policy: Requires `enableProjectLifecycles`, company access and project read access.
+Phase owners and stage participants must belong to the same company.
+
+Evidence: `source-only` — [implementation](../../server/src/routes/project-lifecycles.ts),
+[route tests](../../server/src/__tests__/project-lifecycles-routes.test.ts) and
+[task phase tests](../../server/src/__tests__/issue-phases.test.ts).
+
+Verification: `not-run` — exercise a read with actual agent credentials and confirm a
+write is rejected with 403.
+
+Gaps: Existing tasks are not backfilled; sub-tasks are not phased. Workspace hand-back and
+restore routes do not add a same-owner phase-entry wake.
