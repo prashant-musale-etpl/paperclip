@@ -2873,6 +2873,7 @@ export * from "./prompt-injection-prevention.js";
 export * from "./workspace-provider.js";
 export * from "./workflows.js";
 export * from "./project-lifecycles.js";
+export * from "./company-roles.js";
 export { updateWorkspacePreferenceSchema, type UpdateWorkspacePreference, type WorkspacePreference } from "./workspace-preferences.js";
 export * from "./agent-configuration.js";
 export {

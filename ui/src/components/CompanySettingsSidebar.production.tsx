@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  BadgeCheck,
   ChevronLeft,
   Clock3,
   Cpu,
@@ -118,6 +119,7 @@ export function CompanySettingsSidebar() {
               end
             />
           )}
+          <SidebarNavItem to="/company/settings/roles" label="Roles" icon={BadgeCheck} end />
           {companySettingsPluginSlots
             .filter((slot) => slot.routePath)
             .map((slot) => (

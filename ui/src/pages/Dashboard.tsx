@@ -42,6 +42,7 @@ import { InlineBanner } from "../components/InlineBanner";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { SmokeLabDashboardCard } from "../components/SmokeLabDashboardCard";
+import { useCompanyRoles } from "../hooks/useCompanyRoles";
 
 const DASHBOARD_ACTIVITY_LIMIT = 10;
 
@@ -77,6 +78,7 @@ export function derivePausedAgentBanner(agents: Agent[] | undefined): PausedAgen
 export function Dashboard() {
   const designSandbox = useDesignSandbox();
   const { selectedCompanyId, companies } = useCompany();
+  const { roleMap } = useCompanyRoles(selectedCompanyId);
   const { openOnboarding } = useDialogActions();
   const location = useLocation();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -509,12 +511,13 @@ export function Dashboard() {
                   Recent Activity
                 </h3>
                 <Card className="@container block py-0 divide-y divide-border overflow-hidden">
-                  {designSandbox ? <ActivityList events={recentActivity} agentMap={agentMap} userProfileMap={userProfileMap} entityNameMap={entityNameMap} entityTitleMap={entityTitleMap} rowClassName={event => animatedActivityIds.has(event.id) ? "activity-row-enter" : undefined} /> : recentActivity.map((event) => (
+                  {designSandbox ? <ActivityList events={recentActivity} agentMap={agentMap} userProfileMap={userProfileMap} roleMap={roleMap} entityNameMap={entityNameMap} entityTitleMap={entityTitleMap} rowClassName={event => animatedActivityIds.has(event.id) ? "activity-row-enter" : undefined} /> : recentActivity.map((event) => (
                     <ActivityRow
                       key={event.id}
                       event={event}
                       agentMap={agentMap}
                       userProfileMap={userProfileMap}
+                      roleMap={roleMap}
                       entityNameMap={entityNameMap}
                       entityTitleMap={entityTitleMap}
                       className={animatedActivityIds.has(event.id) ? "activity-row-enter" : undefined}

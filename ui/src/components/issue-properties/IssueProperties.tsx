@@ -47,7 +47,10 @@ import {
 import { getRecentProjectIds } from "../../lib/recent-projects";
 import { orderItemsBySelectedAndRecent } from "../../lib/recent-selections";
 import { formatAssigneeUserLabel, formatUserLabel } from "../../lib/assignees";
-import { buildExecutionPolicy, stageParticipantValues } from "../../lib/issue-execution-policy";
+import { buildExecutionPolicy, ROLE_SELECTION_PREFIX, stageParticipantValues } from "../../lib/issue-execution-policy";
+import { formatRoleParticipantLabel, formatStagePrincipalLabel, stageDecisionEligibility } from "../../lib/company-roles";
+import { useCompanyRoles } from "../../hooks/useCompanyRoles";
+import { ExecutionStageDecisionControls } from "../ExecutionStageDecisionControls";
 import { useExecutionPolicy } from "../../hooks/useExecutionPolicy";
 import {
   areAutomaticMonitorChecksPaused,
@@ -88,7 +91,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { IssuePropertiesPlansTab } from "./IssuePropertiesPlansTab";
 import { IssuePropertiesArtifactsTab } from "./IssuePropertiesArtifactsTab";
-import { User, ArrowUpRight, Plus, X, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore, ChevronLeft } from "lucide-react";
+import { User, UsersRound, ArrowUpRight, Plus, X, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore, ChevronLeft } from "lucide-react";
 import { InlineEntitySelector, type InlineEntityOption } from "../InlineEntitySelector";
 import {
   AssigneeRunningBanner,
@@ -433,6 +436,11 @@ export function IssueProperties({
     queryFn: () => accessApi.listUserDirectory(companyId!),
     enabled: !!companyId,
   });
+  const {
+    roles: companyRoles,
+    roleMap: companyRoleMap,
+    selectableRoles: selectableCompanyRoles,
+  } = useCompanyRoles(companyId);
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(companyId!, { includeArchived: true }),
     queryFn: () => projectsApi.list(companyId!, { includeArchived: true }),
@@ -1045,6 +1053,9 @@ export function IssueProperties({
     if (value.startsWith("user:")) {
       return userLabel(value.slice("user:".length)) ?? "User";
     }
+    if (value.startsWith(ROLE_SELECTION_PREFIX)) {
+      return formatRoleParticipantLabel(value.slice(ROLE_SELECTION_PREFIX.length), companyRoleMap);
+    }
     return value;
   };
   const reviewerLabel = reviewerValues.map((value) => executionParticipantLabel(value)).join(", ");
@@ -1083,11 +1094,11 @@ export function IssueProperties({
     if (!issue.executionState?.currentStageType) return null;
     const stageLabel = issue.executionState.currentStageType === "review" ? "Review" : "Approval";
     const participant = issue.executionState.currentParticipant;
-    const participantLabel = participant
-      ? (participant.type === "agent"
-        ? agentName(participant.agentId ?? null)
-        : userLabel(participant.userId ?? null))
-      : null;
+    const participantLabel = formatStagePrincipalLabel(participant, {
+      agentLabel: (agentId) => agentName(agentId ?? null),
+      userLabel: (userId) => userLabel(userId ?? null),
+      roleMap: companyRoleMap,
+    });
     if (issue.executionState.status === "changes_requested") {
       return `${stageLabel} requested changes${participantLabel ? ` by ${participantLabel}` : ""}`;
     }
@@ -1934,6 +1945,28 @@ export function IssueProperties({
             {creatorUserLabel ? creatorUserLabel : "Requester"}
           </button>
         )}
+        {selectableCompanyRoles
+          .filter((role) => {
+            if (!search.trim()) return true;
+            return `${role.name} ${role.key} role`.toLowerCase().includes(search.toLowerCase());
+          })
+          .map((role) => {
+            const encoded = `${ROLE_SELECTION_PREFIX}${role.id}`;
+            return (
+              <button
+                key={`${stageType}:${encoded}`}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                  values.includes(encoded) && "bg-accent",
+                )}
+                onClick={() => toggleExecutionParticipant(stageType, encoded)}
+                title={`Any holder of ${role.name} may decide`}
+              >
+                <UsersRound className="h-3 w-3 shrink-0 text-muted-foreground" />
+                {formatRoleParticipantLabel(role.id, companyRoleMap)}
+              </button>
+            );
+          })}
         {otherUserOptions
           .filter((option) => {
             if (!search.trim()) return true;
@@ -2683,6 +2716,21 @@ export function IssueProperties({
             <span className="text-sm truncate min-w-0" title={currentExecutionLabel}>{currentExecutionLabel}</span>
           </PropertyRow>
         )}
+        {stageDecisionEligibility({
+          executionPolicy: issue.executionPolicy,
+          executionState: issue.executionState,
+          currentUserId,
+          roles: companyRoles,
+        }).canDecide ? (
+          <PropertyRow label="" wrap>
+            <ExecutionStageDecisionControls
+              issue={issue}
+              currentUserId={currentUserId}
+              roles={companyRoles}
+              roleMap={companyRoleMap}
+            />
+          </PropertyRow>
+        ) : null}
 
         {showScheduledRetryRow && scheduledRetry?.scheduledRetryReason === "workspace_busy" ? (
           <PropertyRow label="Workspace">

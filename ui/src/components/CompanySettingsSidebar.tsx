@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  BadgeCheck,
   Cpu,
   Download,
   FlaskConical,
@@ -120,6 +121,7 @@ export function CompanySettingsSidebar() {
               end
             />
           )}
+          <SidebarNavItem to="/company/settings/roles" label="Roles" icon={BadgeCheck} end />
           {companySettingsPluginSlots
             .filter((slot) => slot.routePath)
             .map((slot) => (

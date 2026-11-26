@@ -584,6 +584,23 @@ npx paperclipai lifecycle move <issue-id> --kind override --to release --reason 
 `--phases-file` accepts a JSON array of phases or `{ "phases": [...] }`, using the
 same fields as the API. `set` without a phase source changes only the mode.
 
+## Role Commands
+
+Company approval roles. Review and approval stages, including lifecycle exit
+gates, can name a role, and any holder may decide. Writes are board-only. A role
+is referenced by id or key, and a user by id or by the email of an active member.
+See [role-based approvals](ROLE-APPROVALS.md).
+
+```sh
+npx paperclipai role list --company-id <company-id> [--include-archived]
+npx paperclipai role create --company-id <company-id> --suggested
+npx paperclipai role create --company-id <company-id> --key security --name "Security" --description "Approves security-sensitive changes"
+npx paperclipai role assign qa --company-id <company-id> --user qa.lead@example.com
+npx paperclipai role unassign qa --company-id <company-id> --user <user-id>
+npx paperclipai role update qa --company-id <company-id> --name "Quality Assurance"
+npx paperclipai role update qa --company-id <company-id> --archive
+```
+
 ## Agent Commands
 
 ```sh

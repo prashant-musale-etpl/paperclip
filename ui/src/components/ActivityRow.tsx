@@ -8,6 +8,7 @@ import { cn } from "../lib/utils";
 import { formatActivityVerb } from "../lib/activity-format";
 import { deriveProjectUrlKey, type ActivityEvent, type Agent } from "@paperclipai/shared";
 import type { CompanyUserProfile } from "../lib/company-members";
+import type { CompanyRoleMap } from "../lib/company-roles";
 import { useState, type ReactNode } from "react";
 import { CellMarquee, HoveredCellContext, useCellMarqueeHover } from "./CellMarquee";
 
@@ -26,6 +27,8 @@ export interface ActivityRowProps {
   event: ActivityEvent;
   agentMap: Map<string, Agent>;
   userProfileMap?: Map<string, CompanyUserProfile>;
+  /** Company roles by id, so role reviewers and approvers show their names. */
+  roleMap?: CompanyRoleMap;
   entityNameMap: Map<string, string>;
   entityTitleMap?: Map<string, string>;
   className?: string;
@@ -33,8 +36,8 @@ export interface ActivityRowProps {
   density?: "comfortable" | "compact";
 }
 
-export function ActivityRow({ event, agentMap, userProfileMap, entityNameMap, entityTitleMap, className, appearance = "default", density = "comfortable" }: ActivityRowProps) {
-  const verb = formatActivityVerb(event.action, event.details, { agentMap, userProfileMap });
+export function ActivityRow({ event, agentMap, userProfileMap, roleMap, entityNameMap, entityTitleMap, className, appearance = "default", density = "comfortable" }: ActivityRowProps) {
+  const verb = formatActivityVerb(event.action, event.details, { agentMap, userProfileMap, roleMap });
 
   const isHeartbeatEvent = event.entityType === "heartbeat_run";
   const heartbeatAgentId = isHeartbeatEvent

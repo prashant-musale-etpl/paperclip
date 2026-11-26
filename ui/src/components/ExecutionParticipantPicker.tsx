@@ -9,12 +9,15 @@ import { queryKeys } from "../lib/queryKeys";
 import { sortAgentsByRecency, getRecentAssigneeIds } from "../lib/recent-assignees";
 import {
   buildExecutionPolicy,
+  ROLE_SELECTION_PREFIX,
   stageParticipantValues,
 } from "../lib/issue-execution-policy";
 import { useExecutionPolicy } from "../hooks/useExecutionPolicy";
+import { useCompanyRoles } from "../hooks/useCompanyRoles";
+import { formatRoleParticipantLabel } from "../lib/company-roles";
 import { cn } from "../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Eye, ShieldCheck } from "lucide-react";
+import { User, Eye, ShieldCheck, UsersRound } from "lucide-react";
 
 type StageType = "review" | "approval";
 
@@ -46,6 +49,8 @@ export function ExecutionParticipantPicker({
     enabled: !!issue.companyId,
   });
 
+  const { roleMap, selectableRoles } = useCompanyRoles(issue.companyId);
+
   const sortedAgents = sortAgentsByRecency(
     agents.filter((a) => a.status !== "terminated"),
     getRecentAssigneeIds(),
@@ -71,6 +76,7 @@ export function ExecutionParticipantPicker({
   const participantLabel = (value: string) => {
     if (value.startsWith("agent:")) return agentName(value.slice("agent:".length));
     if (value.startsWith("user:")) return userLabel(value.slice("user:".length)) ?? "User";
+    if (value.startsWith(ROLE_SELECTION_PREFIX)) return formatRoleParticipantLabel(value.slice(ROLE_SELECTION_PREFIX.length), roleMap);
     return value;
   };
 
@@ -162,6 +168,28 @@ export function ExecutionParticipantPicker({
               {creatorUserLabel ?? "Requester"}
             </button>
           )}
+          {selectableRoles
+            .filter((role) => {
+              if (!search.trim()) return true;
+              return `${role.name} ${role.key} role`.toLowerCase().includes(search.toLowerCase());
+            })
+            .map((role) => {
+              const encoded = `${ROLE_SELECTION_PREFIX}${role.id}`;
+              return (
+                <button
+                  key={encoded}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                    values.includes(encoded) && "bg-accent",
+                  )}
+                  onClick={() => toggle(encoded)}
+                  title={`Any holder of ${role.name} may decide`}
+                >
+                  <UsersRound className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  {formatRoleParticipantLabel(role.id, roleMap)}
+                </button>
+              );
+            })}
           {otherUserOptions
             .filter((option) => {
               if (!search.trim()) return true;

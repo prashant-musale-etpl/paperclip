@@ -10,6 +10,7 @@ const items = [
   { value: "export", label: "Export", href: "/company/export" },
   { value: "import", label: "Import", href: "/company/import" },
   { value: "members", label: "Members", href: "/company/settings/members" },
+  { value: "roles", label: "Roles", href: "/company/settings/roles" },
   { value: "secrets", label: "Secrets", href: "/company/settings/secrets" },
   { value: "instance-profile", label: "Profile", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/profile` },
   { value: "instance-environments", label: "Environments", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/environments` },
@@ -88,6 +89,10 @@ export function getCompanySettingsTab(pathname: string): CompanySettingsTab {
   if (pathname.includes("/company/settings/invites")) {
     // Invites live on the Members page now; the old URL redirects there.
     return "members";
+  }
+
+  if (pathname.includes("/company/settings/roles")) {
+    return "roles";
   }
 
   if (pathname.includes("/company/settings/secrets")) {

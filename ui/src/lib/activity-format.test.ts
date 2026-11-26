@@ -44,6 +44,18 @@ describe("activity formatting", () => {
     expect(formatIssueActivityAction("issue.reviewers_updated", details, { agentMap })).toBe("added reviewer Reviewer Bot");
   });
 
+  it("labels role approvers by role name, and as unknown without the role map", () => {
+    const details = {
+      addedParticipants: [{ type: "role", agentId: null, userId: null, roleId: "role-qa" }],
+      removedParticipants: [],
+    };
+    const roleMap = new Map([["role-qa", { id: "role-qa", name: "QA", archivedAt: null }]]);
+
+    expect(formatActivityVerb("issue.approvers_updated", details, { roleMap })).toBe("added approver Role: QA to");
+    expect(formatIssueActivityAction("issue.approvers_updated", details, { roleMap })).toBe("added approver Role: QA");
+    expect(formatIssueActivityAction("issue.approvers_updated", details)).toBe("added approver Role: unknown");
+  });
+
   it("formats approver removals using user-aware labels", () => {
     const details = {
       addedParticipants: [],

@@ -14,6 +14,8 @@ export const issueExecutionDecisions = pgTable(
     stageType: text("stage_type").notNull(),
     actorAgentId: uuid("actor_agent_id").references(() => agents.id),
     actorUserId: text("actor_user_id"),
+    /** Set when the decision was made by a holder of a role-based stage participant. */
+    viaRoleId: uuid("via_role_id"),
     outcome: text("outcome").notNull(),
     body: text("body").notNull(),
     createdByRunId: uuid("created_by_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),

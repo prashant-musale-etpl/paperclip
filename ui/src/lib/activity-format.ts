@@ -1,13 +1,15 @@
 import type { Agent } from "@paperclipai/shared";
 import type { CompanyUserProfile } from "./company-members";
 import { formatReviewPolicyValue } from "./review-policy";
+import { formatRoleParticipantLabel, type CompanyRoleMap } from "./company-roles";
 
 type ActivityDetails = Record<string, unknown> | null | undefined;
 
 type ActivityParticipant = {
-  type: "agent" | "user";
+  type: "agent" | "user" | "role";
   agentId?: string | null;
   userId?: string | null;
+  roleId?: string | null;
 };
 
 type ActivityIssueReference = {
@@ -20,6 +22,8 @@ interface ActivityFormatOptions {
   agentMap?: Map<string, Agent>;
   userProfileMap?: Map<string, CompanyUserProfile>;
   currentUserId?: string | null;
+  /** Company roles by id, for `role` stage participants. */
+  roleMap?: CompanyRoleMap | null;
 }
 
 const ACTIVITY_ROW_VERBS: Record<string, string> = {
@@ -268,7 +272,7 @@ function humanizeValue(value: unknown): string {
 function isActivityParticipant(value: unknown): value is ActivityParticipant {
   const record = asRecord(value);
   if (!record) return false;
-  return record.type === "agent" || record.type === "user";
+  return record.type === "agent" || record.type === "user" || record.type === "role";
 }
 
 function isActivityIssueReference(value: unknown): value is ActivityIssueReference {
@@ -299,6 +303,9 @@ function formatParticipantLabel(participant: ActivityParticipant, options: Activ
   if (participant.type === "agent") {
     const agentId = participant.agentId ?? "";
     return options.agentMap?.get(agentId)?.name ?? "agent";
+  }
+  if (participant.type === "role") {
+    return formatRoleParticipantLabel(participant.roleId, options.roleMap);
   }
   return formatUserLabel(participant.userId, options);
 }

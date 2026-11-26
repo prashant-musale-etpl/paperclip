@@ -347,11 +347,13 @@ import {
 } from "../services/company-search-rate-limit.js";
 import {
   applyIssueExecutionPolicyTransition,
+  policyRoleIds,
   normalizeIssueExecutionPolicy,
   parseIssueExecutionState,
   redactIssueMonitorExternalRef,
   setIssueExecutionPolicyMonitorScheduledBy,
 } from "../services/issue-execution-policy.js";
+import { assertRolesInCompany, loadRoleApprovalContext } from "../services/company-roles.js";
 import { buildExecutionWorkspaceAdapterConfig, parseProjectExecutionWorkspacePolicy, parseIssueExecutionWorkspaceSettings } from "../services/execution-workspace-policy.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import {
@@ -487,7 +489,7 @@ type ActivityIssueRelationSummary = {
 };
 type ActivityExecutionParticipant = Pick<
   NormalizedExecutionPolicy["stages"][number]["participants"][number],
-  "type" | "agentId" | "userId"
+  "type" | "agentId" | "userId" | "roleId"
 >;
 type ExecutionStageWakeContext = {
   wakeRole: "reviewer" | "approver" | "executor";
@@ -2171,9 +2173,9 @@ function summarizeIssueReferenceActivityDetails(
 function activityExecutionParticipantKey(
   participant: ActivityExecutionParticipant,
 ): string {
-  return participant.type === "agent"
-    ? `agent:${participant.agentId}`
-    : `user:${participant.userId}`;
+  if (participant.type === "agent") return `agent:${participant.agentId}`;
+  if (participant.type === "role") return `role:${participant.roleId}`;
+  return `user:${participant.userId}`;
 }
 
 function summarizeExecutionParticipants(
@@ -2188,6 +2190,7 @@ function summarizeExecutionParticipants(
       type: participant.type,
       agentId: participant.agentId ?? null,
       userId: participant.userId ?? null,
+      ...(participant.type === "role" ? { roleId: participant.roleId ?? null } : {}),
     })) ?? []
   );
 }
@@ -4027,6 +4030,7 @@ export function issueRoutes(
     requestedPolicy: unknown,
   ) {
     const policy = normalizeIssueExecutionPolicy(requestedPolicy);
+    await assertRolesInCompany(db, companyId, policyRoleIds(policy));
     if (req.actor.type !== "agent") return policy;
     const trust = await resolveAgentTrustForIssue(
       { agentId: req.actor.agentId, runId: req.actor.runId },
@@ -10359,10 +10363,17 @@ export function issueRoutes(
             const executionPolicy = normalizeIssueExecutionPolicy(
               lockedIssue.executionPolicy ?? null,
             );
+            const resolutionRoleContext = await loadRoleApprovalContext(tx as unknown as Db, {
+              companyId: lockedIssue.companyId,
+              issueId: lockedIssue.id,
+              policy: executionPolicy,
+              actorUserId: actor.actorType === "user" ? actor.actorId : null,
+            });
             const transition = applyIssueExecutionPolicyTransition({
               issue: lockedIssue,
               policy: executionPolicy,
               previousPolicy: executionPolicy,
+              ...resolutionRoleContext,
               requestedStatus: sourceIssueStatus,
               requestedAssigneePatch: {},
               actor: {
@@ -10396,6 +10407,7 @@ export function issueRoutes(
                 stageType: transition.decision.stageType,
                 actorAgentId: actor.agentId ?? null,
                 actorUserId: actor.actorType === "user" ? actor.actorId : null,
+                viaRoleId: transition.decision.viaRoleId ?? null,
                 outcome: transition.decision.outcome,
                 body: transition.decision.body,
                 createdByRunId: actor.runId ?? null,
@@ -14477,6 +14489,11 @@ export function issueRoutes(
           normalizeIssueExecutionPolicy(req.body.executionPolicy),
           actor.actorType,
         );
+        await assertRolesInCompany(
+          db,
+          existing.companyId,
+          policyRoleIds(updateFields.executionPolicy as NormalizedExecutionPolicy | null),
+        );
       }
       const previousExecutionPolicy = normalizeIssueExecutionPolicy(
         existing.executionPolicy ?? null,
@@ -14499,11 +14516,20 @@ export function issueRoutes(
         req.body.executionPolicy !== undefined && monitorChanged,
       );
 
+      const patchRoleContext = expectedStatusVersion !== undefined
+        ? undefined
+        : await loadRoleApprovalContext(db, {
+          companyId: existing.companyId,
+          issueId: existing.id,
+          policy: nextExecutionPolicy,
+          actorUserId: actor.actorType === "user" ? actor.actorId : null,
+        });
       const transition: ReturnType<typeof applyIssueExecutionPolicyTransition> = expectedStatusVersion !== undefined
         ? { patch: {} }
         : applyIssueExecutionPolicyTransition({
         issue: existing,
         policy: nextExecutionPolicy,
+        ...patchRoleContext,
         previousPolicy: previousExecutionPolicy,
         requestedStatus:
           typeof updateFields.status === "string"
@@ -15098,6 +15124,7 @@ export function issueRoutes(
                 stageType: decision.stageType,
                 actorAgentId: actor.agentId ?? null,
                 actorUserId: actor.actorType === "user" ? actor.actorId : null,
+                viaRoleId: decision.viaRoleId ?? null,
                 outcome: decision.outcome,
                 body: decision.body,
                 createdByRunId: actor.runId ?? null,
@@ -19185,6 +19212,12 @@ export function issueRoutes(
         const transition = applyIssueExecutionPolicyTransition({
           issue: currentIssue,
           policy: currentExecutionPolicy,
+          ...(await loadRoleApprovalContext(db, {
+            companyId: currentIssue.companyId,
+            issueId: currentIssue.id,
+            policy: currentExecutionPolicy,
+            actorUserId: actor.actorType === "user" ? actor.actorId : null,
+          })),
           requestedStatus: "done",
           requestedAssigneePatch: {},
           actor: {
@@ -19282,6 +19315,7 @@ export function issueRoutes(
                 stageType: transition.decision.stageType,
                 actorAgentId: actor.agentId ?? null,
                 actorUserId: actor.actorType === "user" ? actor.actorId : null,
+                viaRoleId: transition.decision.viaRoleId ?? null,
                 outcome: transition.decision.outcome,
                 body: transition.decision.body,
                 createdByRunId: actor.runId ?? null,

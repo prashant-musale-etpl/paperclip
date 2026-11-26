@@ -91,6 +91,7 @@ import {
   normalizeIssueExecutionPolicy,
   parseIssueExecutionState,
 } from "./issue-execution-policy.js";
+import { loadRoleApprovalContext } from "./company-roles.js";
 import { buildExecutionWorkspaceAdapterConfig, resolveEffectiveWorkspaceStrategyType, parseProjectExecutionWorkspacePolicy, gateProjectExecutionWorkspacePolicy, parseIssueExecutionWorkspaceSettings, resolveExecutionWorkspaceMode, parseIssueAssigneeAdapterOverrides, applyDefaultIsolatedExecutionWorkspacePolicy } from "./execution-workspace-policy.js";
 import { issueRecoveryActionService } from "./issue-recovery-actions.js";
 import { logActivity } from "./activity-log.js";
@@ -5221,6 +5222,12 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             issue: sourceBefore,
             policy,
             previousPolicy: policy,
+            ...(await loadRoleApprovalContext(tx as unknown as Db, {
+              companyId: lockedWorkspace.companyId,
+              issueId: lockedWorkspace.sourceIssueId,
+              policy,
+              actorUserId: input.actor.actorType === "user" ? input.actor.actorId : null,
+            })),
             requestedStatus,
             requestedAssigneePatch: {},
             actor: {
