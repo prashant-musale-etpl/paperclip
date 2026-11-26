@@ -20,6 +20,7 @@ import {
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { persistActivity, publishActivity } from "./activity-log.js";
+import { assertRolesInCompany } from "./company-roles.js";
 
 /** Who made a lifecycle change; mirrors the activity-log actor fields. */
 export type LifecycleActor = {
@@ -63,6 +64,7 @@ function toTemplate(row: typeof lifecycleTemplates.$inferSelect): LifecycleTempl
 async function assertPhasePrincipalsInCompany(db: Db, companyId: string, phases: LifecyclePhaseDefinition[]) {
   const agentIds = new Set<string>();
   const userIds = new Set<string>();
+  const roleIds = new Set<string>();
   for (const phase of phases) {
     if (phase.ownerAgentId) agentIds.add(phase.ownerAgentId);
     if (phase.ownerUserId) userIds.add(phase.ownerUserId);
@@ -70,6 +72,7 @@ async function assertPhasePrincipalsInCompany(db: Db, companyId: string, phases:
       for (const participant of stage.participants) {
         if (participant.agentId) agentIds.add(participant.agentId);
         if (participant.userId) userIds.add(participant.userId);
+        if (participant.type === "role" && participant.roleId) roleIds.add(participant.roleId);
       }
     }
   }
@@ -90,6 +93,7 @@ async function assertPhasePrincipalsInCompany(db: Db, companyId: string, phases:
     const missing = [...userIds].filter(id => !found.some(row => row.id === id));
     if (missing.length > 0) throw unprocessable("Phase users must be active members of this company", { userIds: missing });
   }
+  await assertRolesInCompany(db, companyId, roleIds);
 }
 
 async function selectTemplateRow(runner: Db, companyId: string, id: string, options: { forUpdate?: boolean } = {}) {

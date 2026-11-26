@@ -12,10 +12,17 @@ export function readExecutionPolicy(policy: unknown) {
 }
 
 function principalKey(principal: IssueExecutionStagePrincipal | IssueExecutionStageParticipant) {
-  return principal.type === "agent" ? `agent:${principal.agentId}` : `user:${principal.userId}`;
+  return selectionValueFromPrincipal(principal);
 }
 
+/** Selection-value prefix for company-role participants (`role:<roleId>`). */
+export const ROLE_SELECTION_PREFIX = "role:";
+
 export function principalFromSelectionValue(value: string): IssueExecutionStagePrincipal | null {
+  if (value.startsWith(ROLE_SELECTION_PREFIX)) {
+    const roleId = value.slice(ROLE_SELECTION_PREFIX.length).trim();
+    return roleId ? { type: "role", roleId, agentId: null, userId: null } : null;
+  }
   const selection = parseAssigneeValue(value);
   if (selection.assigneeAgentId) {
     return { type: "agent", agentId: selection.assigneeAgentId, userId: null };
@@ -27,7 +34,9 @@ export function principalFromSelectionValue(value: string): IssueExecutionStageP
 }
 
 export function selectionValueFromPrincipal(principal: IssueExecutionStagePrincipal | IssueExecutionStageParticipant): string {
-  return principal.type === "agent" ? `agent:${principal.agentId}` : `user:${principal.userId}`;
+  if (principal.type === "agent") return `agent:${principal.agentId}`;
+  if (principal.type === "role") return `${ROLE_SELECTION_PREFIX}${principal.roleId}`;
+  return `user:${principal.userId}`;
 }
 
 export function stageParticipantValues(policy: IssueExecutionPolicy | null | undefined, stageType: StageType): string[] {
@@ -53,6 +62,7 @@ function mergeParticipants(
       type: principal.type,
       agentId: principal.type === "agent" ? principal.agentId ?? null : null,
       userId: principal.type === "user" ? principal.userId ?? null : null,
+      ...(principal.type === "role" ? { roleId: principal.roleId ?? null } : {}),
     });
   }
   return participants;

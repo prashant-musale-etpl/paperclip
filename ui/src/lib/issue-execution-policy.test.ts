@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { issueExecutionPolicySchema, type IssueExecutionPolicy } from "@paperclipai/shared";
-import { buildExecutionPolicy, stageParticipantValues } from "./issue-execution-policy";
+import {
+  buildExecutionPolicy,
+  principalFromSelectionValue,
+  selectionValueFromPrincipal,
+  stageParticipantValues,
+} from "./issue-execution-policy";
 
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -182,4 +187,38 @@ describe("buildExecutionPolicy", () => {
         reviewerValues: [], approverValues: [] })).toThrow();
     },
   );
+});
+
+describe("role participants", () => {
+  const ROLE_ID = "00000000-0000-4000-8000-0000000000aa";
+
+  it("round-trips role selection values into schema-valid role participants", () => {
+    const policy = buildExecutionPolicy({
+      existingPolicy: null,
+      reviewerValues: [],
+      approverValues: [`role:${ROLE_ID}`, "user:local-board"],
+    });
+
+    expect(issueExecutionPolicySchema.safeParse(policy).success).toBe(true);
+    const approval = policy?.stages.find((stage) => stage.type === "approval");
+    expect(approval?.participants[0]).toMatchObject({ type: "role", roleId: ROLE_ID, agentId: null, userId: null });
+    expect(stageParticipantValues(policy, "approval")).toEqual([`role:${ROLE_ID}`, "user:local-board"]);
+  });
+
+  it("keeps an existing role participant id when the stage is rebuilt", () => {
+    const first = buildExecutionPolicy({ existingPolicy: null, reviewerValues: [`role:${ROLE_ID}`], approverValues: [] });
+    const firstId = first?.stages[0]?.participants[0]?.id;
+    const second = buildExecutionPolicy({
+      existingPolicy: first,
+      reviewerValues: [`role:${ROLE_ID}`, `agent:${AGENT_ID}`],
+      approverValues: [],
+    });
+    expect(second?.stages[0]?.participants[0]?.id).toBe(firstId);
+  });
+
+  it("maps role principals to and from selection values", () => {
+    expect(principalFromSelectionValue(`role:${ROLE_ID}`)).toEqual({ type: "role", roleId: ROLE_ID, agentId: null, userId: null });
+    expect(principalFromSelectionValue("role:")).toBeNull();
+    expect(selectionValueFromPrincipal({ type: "role", roleId: ROLE_ID })).toBe(`role:${ROLE_ID}`);
+  });
 });

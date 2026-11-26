@@ -706,9 +706,15 @@ export interface IssueRelatedWorkSummary {
 }
 
 export interface IssueExecutionStagePrincipal {
-  type: "agent" | "user";
+  /**
+   * `role` participants name a company role; any user holding that role when
+   * the stage is decided may act on it. Execution state (`currentParticipant`,
+   * `returnAssignee`) always stores the resolved agent or user, never a role.
+   */
+  type: "agent" | "user" | "role";
   agentId?: string | null;
   userId?: string | null;
+  roleId?: string | null;
 }
 
 export interface IssueExecutionStageParticipant extends IssueExecutionStagePrincipal {
@@ -807,6 +813,8 @@ export interface IssueExecutionDecision {
   stageType: IssueExecutionStageType;
   actorAgentId: string | null;
   actorUserId: string | null;
+  /** The company role the actor decided under, for role-based stages. */
+  viaRoleId?: string | null;
   outcome: IssueExecutionDecisionOutcome;
   body: string;
   createdByRunId: string | null;

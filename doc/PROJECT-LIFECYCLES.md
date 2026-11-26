@@ -92,4 +92,6 @@ or `phases`. Company templates live under
   different phases. A waterfall-style project can use one top-level delivery task
   with sub-tasks.
 - The board view stays grouped by status; phase grouping is a list option.
-- Owners are concrete agents or people, not roles.
+- Owners are concrete agents or people, not roles. Exit-gate review and approval
+  stages *can* name a company role; any holder may decide. See
+  [ROLE-APPROVALS.md](ROLE-APPROVALS.md).

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { LIFECYCLE_TEMPLATE_PRESETS, lifecyclePhaseListSchema } from "@paperclipai/shared";
 import type {
   LifecycleMode,
@@ -12,6 +12,8 @@ import type {
 import { agentsApi } from "@/api/agents";
 import { projectLifecyclesApi } from "@/api/projectLifecycles";
 import { queryKeys } from "@/lib/queryKeys";
+import { useCompanyRoles } from "@/hooks/useCompanyRoles";
+import { formatRoleParticipantLabel } from "@/lib/company-roles";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -19,6 +21,12 @@ import { NativeSelect } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 type Stage = ProjectLifecyclePhase["exitGate"]["stages"][number];
+
+/** A single-role approval stage; `stageId` is kept so saved execution state still matches. */
+export interface ApprovalRoleGate {
+  roleId: string;
+  stageId?: string;
+}
 
 /** Editable phase; rework targets reference other drafts by `draftId` so key edits keep them. */
 export interface PhaseDraft {
@@ -33,6 +41,8 @@ export interface PhaseDraft {
   requiredWorkProductTypes: LifecyclePhaseExitGate["requiredWorkProductTypes"];
   requireChildrenTerminal: boolean;
   reviewerAgentId: string | null;
+  /** One approval stage per entry, each decided by any holder of the role; in order. */
+  approvalRoles: ApprovalRoleGate[];
   otherStages: Stage[];
   reworkTo: string[];
 }
@@ -59,12 +69,25 @@ export function phaseKeyFromName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "phase";
 }
 
-function reviewerOf(stages: Stage[]) {
+function isRoleApprovalStage(stage: Stage) {
+  return stage.type === "approval" && stage.participants.length === 1
+    && stage.participants[0]?.type === "role" && Boolean(stage.participants[0]?.roleId);
+}
+
+/** Splits exit-gate stages into the editable reviewer agent, role approval gates, and everything else (kept as-is). */
+export function stageFieldsOf(stages: Stage[]): Pick<PhaseDraft, "reviewerAgentId" | "approvalRoles" | "otherStages"> {
   const index = stages.findIndex((stage) =>
     stage.type === "review" && stage.participants.length === 1 && stage.participants[0]?.type === "agent");
-  return index < 0
-    ? { reviewerAgentId: null, otherStages: stages }
-    : { reviewerAgentId: stages[index]!.participants[0]!.agentId ?? null, otherStages: stages.filter((_, i) => i !== index) };
+  const reviewerAgentId = index < 0 ? null : stages[index]!.participants[0]!.agentId ?? null;
+  const rest = stages.filter((_, i) => i !== index);
+  return {
+    reviewerAgentId,
+    approvalRoles: rest.filter(isRoleApprovalStage).map((stage) => ({
+      roleId: stage.participants[0]!.roleId!,
+      ...(stage.id ? { stageId: stage.id } : {}),
+    })),
+    otherStages: rest.filter((stage) => !isRoleApprovalStage(stage)),
+  };
 }
 
 export function draftsFromLifecycle(phases: Array<Omit<ProjectLifecyclePhase, "id" | "position">>): PhaseDraft[] {
@@ -79,7 +102,7 @@ export function draftsFromLifecycle(phases: Array<Omit<ProjectLifecyclePhase, "i
     requiredDocuments: phase.exitGate.requiredDocuments.join(", "),
     requiredWorkProductTypes: [...phase.exitGate.requiredWorkProductTypes],
     requireChildrenTerminal: phase.exitGate.requireChildrenTerminal,
-    ...reviewerOf(phase.exitGate.stages),
+    ...stageFieldsOf(phase.exitGate.stages),
     reworkTo: [] as string[],
   }));
   phases.forEach((phase, index) => {
@@ -104,6 +127,7 @@ function blankDraft(name: string): PhaseDraft {
     requiredWorkProductTypes: [],
     requireChildrenTerminal: false,
     reviewerAgentId: null,
+    approvalRoles: [],
     otherStages: [],
     reworkTo: [],
   };
@@ -126,6 +150,11 @@ export function phasesFromDrafts(drafts: PhaseDraft[]): LifecyclePhaseInput[] {
         ...(draft.reviewerAgentId
           ? [{ type: "review" as const, participants: [{ type: "agent" as const, agentId: draft.reviewerAgentId }] }]
           : []),
+        ...draft.approvalRoles.map((gate) => ({
+          ...(gate.stageId ? { id: gate.stageId } : {}),
+          type: "approval" as const,
+          participants: [{ type: "role" as const, roleId: gate.roleId }],
+        })),
         ...draft.otherStages,
       ],
     },
@@ -154,6 +183,7 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
     () => (agentsQuery.data ?? []).filter((agent) => agent.status !== "terminated"),
     [agentsQuery.data],
   );
+  const { roleMap, selectableRoles, error: rolesError } = useCompanyRoles(companyId);
 
   const lifecycle = lifecycleQuery.data ?? null;
   const [mode, setMode] = useState<LifecycleMode>("off");
@@ -392,6 +422,57 @@ export function ProjectLifecycleEditor({ projectId, companyId }: { projectId: st
                   />
                   Sub-tasks must be finished
                 </label>
+
+                <div className="space-y-1">
+                  <span className="block text-xs text-muted-foreground">Approved by roles (one sign-off per role, in order)</span>
+                  {draft.approvalRoles.length > 0 ? (
+                    <ul className="flex flex-wrap gap-2" aria-label={`Phase ${index + 1} approval roles`}>
+                      {draft.approvalRoles.map((gate, gateIndex) => {
+                        const label = formatRoleParticipantLabel(gate.roleId, roleMap);
+                        return (
+                          <li
+                            key={`${gate.roleId}:${gateIndex}`}
+                            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs"
+                          >
+                            {label}
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => update(draft.draftId, {
+                                approvalRoles: draft.approvalRoles.filter((_, i) => i !== gateIndex),
+                              })}
+                              aria-label={`Remove ${label} approval from ${draft.name}`}
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                  {selectableRoles.length > 0 ? (
+                    <NativeSelect
+                      value=""
+                      onChange={(event) => {
+                        const roleId = event.target.value;
+                        if (!roleId) return;
+                        update(draft.draftId, { approvalRoles: [...draft.approvalRoles, { roleId }] });
+                      }}
+                      aria-label={`Phase ${index + 1} add approval role`}
+                    >
+                      <option value="">Add a role approval…</option>
+                      {selectableRoles
+                        .filter((role) => !draft.approvalRoles.some((gate) => gate.roleId === role.id))
+                        .map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+                    </NativeSelect>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {rolesError
+                        ? `Could not load roles: ${(rolesError as Error).message}`
+                        : "No roles yet. Create roles in Settings → Roles to require role sign-off."}
+                    </p>
+                  )}
+                </div>
 
                 {earlier.length > 0 ? (
                   <div className="space-y-1">

@@ -3,7 +3,7 @@ import { slackTestMessageSchema, slackTestMessageResultSchema, slackManagerAutho
 import { experimentalApiMetadata } from "./experimental-api-metadata.js";
 import { ATTENTION_SOURCE_KINDS } from "@paperclipai/shared";
 import { agentCaseHandoffSchema, caseWorkflowDocumentTextSchema, doneCaseHandoffSchema, createWorkflowSchema, updateWorkflowSchema, listWorkflowsSchema, readWorkflowQuerySchema } from "@paperclipai/shared";
-import { createLifecycleTemplateSchema, updateLifecycleTemplateSchema, listLifecycleTemplatesQuerySchema, putProjectLifecycleSchema, issuePhaseTransitionRequestSchema } from "@paperclipai/shared";
+import { createLifecycleTemplateSchema, updateLifecycleTemplateSchema, listLifecycleTemplatesQuerySchema, putProjectLifecycleSchema, issuePhaseTransitionRequestSchema, createCompanyRoleSchema, updateCompanyRoleSchema, assignCompanyRoleSchema } from "@paperclipai/shared";
 import {
   experimentalApiPaths,
   experimentalApiQueries,
@@ -13073,6 +13073,22 @@ for (const [method, path, body, summary] of [
     ...(method === "get" && path.endsWith("lifecycle-templates") ? { query: listLifecycleTemplatesQuerySchema } : {}),
   },
   responses: { [method === "post" ? 201 : 200]: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound,
+    ...(method === "get" ? {} : { 409: r.conflict, 422: r.unprocessable }) } });
+
+for (const [method, path, body, summary] of [
+  ["get", "/api/companies/{companyId}/roles", undefined, "List company approval roles and their holders"],
+  ["post", "/api/companies/{companyId}/roles", createCompanyRoleSchema, "Create a company approval role"],
+  ["get", "/api/companies/{companyId}/roles/{roleId}", undefined, "Read a company approval role and its holders"],
+  ["patch", "/api/companies/{companyId}/roles/{roleId}", updateCompanyRoleSchema, "Rename, describe or archive a company approval role"],
+  ["post", "/api/companies/{companyId}/roles/{roleId}/holders", assignCompanyRoleSchema, "Assign a company member to a role"],
+  ["delete", "/api/companies/{companyId}/roles/{roleId}/holders/{userId}", undefined, "Remove a company member from a role"],
+] as const) registry.registerPath({ method, path, tags: ["Companies"], summary,
+  description: "Requires company access; writes are board-only and logged. Review and approval stages (including lifecycle exit gates) may name a role participant ({ type: \"role\", roleId }); any active holder of the role may then decide the stage, except the person whose work is under review. Approving a second gate on the same task under a different role returns 422 separation_of_duties. Only active company members can hold a role; archived roles cannot be assigned or newly used in stages.",
+  request: {
+    params: z.object(Object.fromEntries([...path.matchAll(/\{([^}]+)\}/g)].map(match => [match[1], match[1] === "userId" ? z.string() : z.string().uuid()]))),
+    ...(body ? { body: jsonBody(body) } : {}),
+  },
+  responses: { [method === "post" && path.endsWith("/roles") ? 201 : 200]: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound,
     ...(method === "get" ? {} : { 409: r.conflict, 422: r.unprocessable }) } });
 
 for (const [method, path, body, summary] of [

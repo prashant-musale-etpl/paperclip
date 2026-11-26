@@ -53,11 +53,22 @@ type TransitionInput = {
   commentBody?: string | null;
   reviewRequest?: IssueExecutionState["reviewRequest"] | null;
   monitorExplicitlyUpdated?: boolean;
+  /**
+   * Current holders of the company roles named by `role` stage participants
+   * (roleId -> userIds). Role participants without an entry resolve to nobody.
+   * Load with `loadRoleApprovalContext`.
+   */
+  roleHolders?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Roles the actor has already approved a stage under on this issue.
+   * Approving under a different role is refused (separation of duties).
+   */
+  actorApprovedRoleIds?: readonly string[];
 };
 
 type TransitionResult = {
   patch: Record<string, unknown>;
-  decision?: Pick<IssueExecutionDecision, "stageId" | "stageType" | "outcome" | "body">;
+  decision?: Pick<IssueExecutionDecision, "stageId" | "stageType" | "outcome" | "body"> & { viaRoleId?: string | null };
   workflowControlledAssignment?: boolean;
 };
 
@@ -358,13 +369,14 @@ export function normalizeIssueExecutionPolicy(input: unknown): IssueExecutionPol
           type: participant.type,
           agentId: participant.type === "agent" ? participant.agentId ?? null : null,
           userId: participant.type === "user" ? participant.userId ?? null : null,
+          ...(participant.type === "role" ? { roleId: participant.roleId ?? null } : {}),
         }))
-        .filter((participant) => (participant.type === "agent" ? Boolean(participant.agentId) : Boolean(participant.userId)));
+        .filter((participant) => Boolean(principalIdentity(participant)));
 
       const dedupedParticipants: IssueExecutionStage["participants"] = [];
       const seen = new Set<string>();
       for (const participant of participants) {
-        const key = participant.type === "agent" ? `agent:${participant.agentId}` : `user:${participant.userId}`;
+        const key = `${participant.type}:${principalIdentity(participant)}`;
         if (seen.has(key)) continue;
         seen.add(key);
         dedupedParticipants.push(participant);
@@ -441,10 +453,107 @@ function actorPrincipal(actor: ActorLike): IssueExecutionStagePrincipal | null {
   return null;
 }
 
+function principalIdentity(principal: IssueExecutionStagePrincipal): string | null {
+  if (principal.type === "agent") return principal.agentId ?? null;
+  if (principal.type === "role") return principal.roleId ?? null;
+  return principal.userId ?? null;
+}
+
 function principalsEqual(a: IssueExecutionStagePrincipal | null, b: IssueExecutionStagePrincipal | null): boolean {
   if (!a || !b) return false;
   if (a.type !== b.type) return false;
-  return a.type === "agent" ? a.agentId === b.agentId : a.userId === b.userId;
+  const identity = principalIdentity(a);
+  return identity !== null && identity === principalIdentity(b);
+}
+
+/** A user participant produced by resolving a `role` participant to one of its holders. */
+type RoleResolvedParticipant = IssueExecutionStage["participants"][number] & { viaRoleIds?: string[] };
+
+/** Stages that named at least one role; resolved copies are tracked so role semantics apply. */
+const roleGatedStages = new WeakSet<IssueExecutionStage>();
+
+export function policyHasRoleParticipants(policy: IssueExecutionPolicy | null | undefined): boolean {
+  return Boolean(policy?.stages.some((stage) => stage.participants.some((participant) => participant.type === "role")));
+}
+
+/** Role ids named by `role` participants anywhere in the policy. */
+export function policyRoleIds(policy: IssueExecutionPolicy | null | undefined): string[] {
+  const ids = new Set<string>();
+  for (const stage of policy?.stages ?? []) {
+    for (const participant of stage.participants) {
+      if (participant.type === "role" && participant.roleId) ids.add(participant.roleId);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Replaces each `role` participant with one `user` participant per current
+ * holder. Holders keep the roles they were resolved through (`viaRoleIds`) so
+ * any of them may decide the stage and the decision can record the role.
+ */
+export function resolveRoleParticipants(
+  policy: IssueExecutionPolicy | null,
+  roleHolders: Readonly<Record<string, readonly string[]>> | undefined,
+): IssueExecutionPolicy | null {
+  if (!policy || !policyHasRoleParticipants(policy)) return policy;
+  const stages = policy.stages.map((stage) => {
+    if (!stage.participants.some((participant) => participant.type === "role")) return stage;
+    const resolved: RoleResolvedParticipant[] = [];
+    const byUser = new Map<string, RoleResolvedParticipant>();
+    for (const participant of stage.participants) {
+      if (participant.type !== "role") {
+        if (participant.type === "user" && participant.userId) {
+          if (byUser.has(participant.userId)) continue;
+          const copy: RoleResolvedParticipant = { ...participant };
+          byUser.set(participant.userId, copy);
+          resolved.push(copy);
+        } else {
+          resolved.push({ ...participant });
+        }
+        continue;
+      }
+      const roleId = participant.roleId;
+      if (!roleId) continue;
+      for (const userId of roleHolders?.[roleId] ?? []) {
+        const existing = byUser.get(userId);
+        if (existing) {
+          existing.viaRoleIds = Array.from(new Set([...(existing.viaRoleIds ?? []), roleId]));
+          continue;
+        }
+        const holder: RoleResolvedParticipant = {
+          id: `${participant.id}:${userId}`,
+          type: "user",
+          agentId: null,
+          userId,
+          viaRoleIds: [roleId],
+        };
+        byUser.set(userId, holder);
+        resolved.push(holder);
+      }
+    }
+    const resolvedStage: IssueExecutionStage = { ...stage, participants: resolved };
+    roleGatedStages.add(resolvedStage);
+    return resolvedStage;
+  });
+  return { ...policy, stages };
+}
+
+/** Roles through which `principal` takes part in `stage`, or [] when it is not a role holder there. */
+function stageRolesForPrincipal(stage: IssueExecutionStage, principal: IssueExecutionStagePrincipal | null): string[] {
+  if (!principal) return [];
+  const match = (stage.participants as RoleResolvedParticipant[]).find((candidate) => principalsEqual(candidate, principal));
+  return match?.viaRoleIds ?? [];
+}
+
+function noEligibleParticipantError(stage: IssueExecutionStage) {
+  if (roleGatedStages.has(stage)) {
+    return unprocessable(
+      `No eligible ${stage.type} participant is configured for this issue: nobody else holds the required role`,
+      { code: "role_has_no_eligible_holder" },
+    );
+  }
+  return unprocessable(`No eligible ${stage.type} participant is configured for this issue`);
 }
 
 function resolveMaxReviewRounds(policy: IssueExecutionPolicy | null): number {
@@ -659,6 +768,8 @@ function canAutoSkipPendingStage(input: {
   if (input.requestedStatus !== "done" || input.stage.type !== "review" || !input.returnAssignee) {
     return false;
   }
+  // A role gate exists to get someone other than the author to decide.
+  if (roleGatedStages.has(input.stage)) return false;
   return input.stage.participants.length > 0 &&
     input.stage.participants.every((participant) => principalsEqual(participant, input.returnAssignee));
 }
@@ -734,7 +845,7 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
         exclude: existingState?.returnAssignee ?? null,
       });
     if (!currentParticipant) {
-      throw unprocessable(`No eligible ${activeStage.type} participant is configured for this issue`);
+      throw noEligibleParticipantError(activeStage);
     }
 
     // An escalated review is deliberately held by a human who is not in the
@@ -805,10 +916,29 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
       };
     }
 
-    if (principalsEqual(currentParticipant, actor)) {
+    // Role gates: any current holder of a role named by the stage may decide
+    // it, not only the holder the stage was assigned to, except the person
+    // whose work is under review.
+    const actorStageRoles = stageRolesForPrincipal(activeStage, actor);
+    const actorDecidesAsRoleHolder =
+      actorStageRoles.length > 0 &&
+      !principalsEqual(actor, existingState?.returnAssignee ?? null);
+    const decidingRoleId = actorStageRoles.length === 0
+      ? null
+      : actorStageRoles.find((roleId) => input.actorApprovedRoleIds?.includes(roleId)) ?? actorStageRoles[0] ?? null;
+    if (principalsEqual(currentParticipant, actor) || actorDecidesAsRoleHolder) {
       if (requestedStatus === "done") {
         if (!input.commentBody?.trim()) {
           throw unprocessable(`Approving a review or approval stage requires a comment. ${STAGE_DECISION_COMMENT_HINT}`);
+        }
+        if (decidingRoleId) {
+          const conflictingRole = input.actorApprovedRoleIds?.find((roleId) => roleId !== decidingRoleId);
+          if (conflictingRole) {
+            throw unprocessable(
+              "Separation of duties: you already approved another gate on this task under a different role. Another holder of this role must approve.",
+              { code: "separation_of_duties", conflictingRoleId: conflictingRole, roleId: decidingRoleId },
+            );
+          }
         }
         const approvedState = buildCompletedState(existingState, activeStage);
         // Only stages after the stage being approved are advance candidates.
@@ -827,6 +957,7 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
               stageType: activeStage.type,
               outcome: "approved",
               body: input.commentBody.trim(),
+              viaRoleId: decidingRoleId,
             },
           };
         }
@@ -836,7 +967,7 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
           exclude: existingState?.returnAssignee ?? null,
         });
         if (!participant) {
-          throw unprocessable(`No eligible ${nextStage.type} participant is configured for this issue`);
+          throw noEligibleParticipantError(nextStage);
         }
 
         buildPendingStagePatch({
@@ -855,6 +986,7 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
             stageType: activeStage.type,
             outcome: "approved",
             body: input.commentBody.trim(),
+            viaRoleId: decidingRoleId,
           },
           workflowControlledAssignment: true,
         };
@@ -882,6 +1014,7 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
           stageType: activeStage.type,
           outcome: "changes_requested" as const,
           body: input.commentBody.trim(),
+          viaRoleId: decidingRoleId,
         };
         // Human decisions reset the round counter: the cap exists to stop
         // unattended agent↔agent ping-pong, not to limit human review.
@@ -1041,7 +1174,7 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
     });
   }
   if (!participant) {
-    throw unprocessable(`No eligible ${pendingStage.type} participant is configured for this issue`);
+    throw noEligibleParticipantError(pendingStage);
   }
 
   buildPendingStagePatch({
@@ -1237,7 +1370,12 @@ export function buildIssueMonitorClearedPatch(input: {
 }
 
 export function applyIssueExecutionPolicyTransition(input: TransitionInput): TransitionResult {
-  const stageResult = applyIssueExecutionStageTransition(input);
+  // Roles resolve to holders for stage decisions only; the stored policy (and
+  // the monitor transition, which may write it back) keeps the role.
+  const stageResult = applyIssueExecutionStageTransition({
+    ...input,
+    policy: resolveRoleParticipants(input.policy, input.roleHolders),
+  });
   const monitorPatch = applyMonitorTransition(input, stageResult.patch);
   Object.assign(stageResult.patch, monitorPatch);
   return stageResult;

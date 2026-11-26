@@ -80,6 +80,8 @@ describe("CompanySettingsNav", () => {
     expect(getCompanySettingsTab("/PAP/company/settings/access")).toBe("members");
     expect(getCompanySettingsTab("/company/settings/invites")).toBe("members");
     expect(getCompanySettingsTab("/PAP/company/settings/secrets")).toBe("secrets");
+    expect(getCompanySettingsTab("/company/settings/roles")).toBe("roles");
+    expect(getCompanySettingsTab("/PAP/company/settings/roles")).toBe("roles");
     expect(getCompanySettingsTab("/company/settings/instance/profile")).toBe("instance-profile");
     expect(getCompanySettingsTab("/PAP/company/settings/instance/general")).toBe("general");
     expect(getCompanySettingsTab("/company/settings/instance/environments")).toBe("instance-environments");
@@ -134,6 +136,7 @@ describe("CompanySettingsNav", () => {
           { value: "export", label: "Export" },
           { value: "import", label: "Import" },
           { value: "members", label: "Members" },
+          { value: "roles", label: "Roles" },
           { value: "secrets", label: "Secrets" },
           { value: "instance-profile", label: "Profile" },
           { value: "instance-environments", label: "Environments" },
@@ -176,6 +179,7 @@ describe("CompanySettingsNav", () => {
       "export",
       "import",
       "members",
+      "roles",
       "secrets",
       "instance-profile",
       "instance-environments",

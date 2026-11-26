@@ -524,6 +524,12 @@ export const queryKeys = {
   lifecycleTemplates: {
     list: (companyId: string) => ["lifecycle-templates", companyId] as const,
   },
+  companyRoles: {
+    /** Prefix for every roles query of a company; invalidate this after a write. */
+    all: (companyId: string) => ["company-roles", companyId] as const,
+    list: (companyId: string, opts: { includeArchived?: boolean } = {}) =>
+      ["company-roles", companyId, { includeArchived: opts.includeArchived === true }] as const,
+  },
   issuePhases: {
     detail: (issueId: string) => ["issue-phases", issueId] as const,
     transitions: (issueId: string) => ["issue-phases", issueId, "transitions"] as const,

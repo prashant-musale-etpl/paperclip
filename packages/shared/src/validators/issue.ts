@@ -316,84 +316,45 @@ export const issueAssigneeAdapterOverridesSchema = z
   .strict();
 
 const issueExecutionStagePrincipalBaseSchema = z.object({
-  type: z.enum(["agent", "user"]),
+  type: z.enum(["agent", "user", "role"]),
   agentId: z.string().guid().optional().nullable(),
   userId: z.string().optional().nullable(),
+  /** Company role id; required for `type: "role"` participants. */
+  roleId: z.string().guid().optional().nullable(),
 });
 
+type ExecutionStagePrincipalInput = z.infer<typeof issueExecutionStagePrincipalBaseSchema>;
+
+function refineExecutionStagePrincipal(value: ExecutionStagePrincipalInput, ctx: z.RefinementCtx) {
+  const required = value.type === "agent" ? "agentId" : value.type === "user" ? "userId" : "roleId";
+  const label = value.type === "agent" ? "Agent" : value.type === "user" ? "User" : "Role";
+  if (!value[required]) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${label} participants require ${required}`,
+      path: [required],
+    });
+  }
+  for (const other of ["agentId", "userId", "roleId"] as const) {
+    if (other !== required && value[other]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} participants cannot set ${other}`,
+        path: [other],
+      });
+    }
+  }
+}
+
 export const issueExecutionStagePrincipalSchema =
-  issueExecutionStagePrincipalBaseSchema.superRefine((value, ctx) => {
-    if (value.type === "agent") {
-      if (!value.agentId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Agent participants require agentId",
-          path: ["agentId"],
-        });
-      }
-      if (value.userId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Agent participants cannot set userId",
-          path: ["userId"],
-        });
-      }
-      return;
-    }
-    if (!value.userId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "User participants require userId",
-        path: ["userId"],
-      });
-    }
-    if (value.agentId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "User participants cannot set agentId",
-        path: ["agentId"],
-      });
-    }
-  });
+  issueExecutionStagePrincipalBaseSchema.superRefine(refineExecutionStagePrincipal);
 
 export const issueExecutionStageParticipantSchema =
   issueExecutionStagePrincipalBaseSchema
     .extend({
       id: z.string().guid().optional(),
     })
-    .superRefine((value, ctx) => {
-      if (value.type === "agent") {
-        if (!value.agentId) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Agent participants require agentId",
-            path: ["agentId"],
-          });
-        }
-        if (value.userId) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Agent participants cannot set userId",
-            path: ["userId"],
-          });
-        }
-        return;
-      }
-      if (!value.userId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "User participants require userId",
-          path: ["userId"],
-        });
-      }
-      if (value.agentId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "User participants cannot set agentId",
-          path: ["agentId"],
-        });
-      }
-    });
+    .superRefine(refineExecutionStagePrincipal);
 
 export const issueExecutionStageSchema = z.object({
   id: z.string().guid().optional(),
