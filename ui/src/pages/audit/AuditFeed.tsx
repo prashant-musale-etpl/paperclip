@@ -27,6 +27,8 @@ import { ApiError } from "@/api/client";
 import { describeError } from "@/api/errors";
 import { QueryErrorState, useQueryView } from "@/components/QueryView";
 import { useToastActions } from "@/context/ToastContext";
+import { useCompanyRoles } from "@/hooks/useCompanyRoles";
+import type { CompanyRoleMap } from "@/lib/company-roles";
 import { instanceSettingsApi } from "@/api/instanceSettings";
 
 const PAGE_SIZE = 50;
@@ -212,14 +214,16 @@ function AuditRow({
   record,
   agentMap,
   userProfileMap,
+  roleMap,
   casesEnabled,
 }: {
   record: AuditActionRecord;
   agentMap: Map<string, Agent>;
   userProfileMap: Map<string, CompanyUserProfile>;
   casesEnabled: boolean;
+  roleMap?: CompanyRoleMap;
 }) {
-  const verb = formatActivityVerb(record.action, record.details, { agentMap, userProfileMap });
+  const verb = formatActivityVerb(record.action, record.details, { agentMap, userProfileMap, roleMap });
   const responsible = record.responsibleUserId ? userProfileMap.get(record.responsibleUserId) : null;
   // Suppress the "on behalf of" chip when the human actor *is* the responsible user.
   const showOnBehalf = Boolean(
@@ -352,6 +356,7 @@ export function AuditFeed({
   const [exporting, setExporting] = useState(false);
   const [downgradeRecoveryAttempted, setDowngradeRecoveryAttempted] = useState(false);
 
+  const { roleMap } = useCompanyRoles(companyId);
   const agents = useQuery({
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
@@ -782,6 +787,7 @@ export function AuditFeed({
                 key={record.id}
                 record={record}
                 agentMap={agentMap}
+                roleMap={roleMap}
                 userProfileMap={userProfileMap}
                 casesEnabled={experimentalSettings?.enableCases === true}
               />

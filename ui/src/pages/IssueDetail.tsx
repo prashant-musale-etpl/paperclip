@@ -326,6 +326,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { formatIssueActivityAction } from "@/lib/activity-format";
+import { useCompanyRoles } from "@/hooks/useCompanyRoles";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { buildIssuePropertiesPanelKey } from "../lib/issue-properties-panel-key";
 import { openSkillPanelState, shouldSuppressTaskPanelUntilPlan } from "../lib/task-side-panel-state";
@@ -2863,6 +2864,7 @@ function IssueDetailActivityTab({
   handoffFocusSignal = 0,
   externalReferences,
 }: IssueDetailActivityTabProps) {
+  const { roleMap } = useCompanyRoles(companyId);
   const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: queryKeys.issues.activity(issueId),
     queryFn: () => activityApi.forIssue(issueId),
@@ -3108,6 +3110,7 @@ function IssueDetailActivityTab({
                     {formatIssueActivityAction(evt.action, evt.details, {
                       agentMap,
                       userProfileMap,
+                      roleMap,
                       currentUserId,
                     })}
                   </span>
