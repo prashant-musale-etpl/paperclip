@@ -11,13 +11,20 @@ export interface LocalEnvironmentConfig {
   [key: string]: unknown;
 }
 
+export type SshEnvironmentAuthMethod = "private_key" | "password";
+
 export interface SshEnvironmentConfig {
   host: string;
   port: number;
   username: string;
   remoteWorkspacePath: string;
+  /** How Paperclip logs in. Defaults to "private_key" for older configs. */
+  authMethod: SshEnvironmentAuthMethod;
   privateKey: string | null;
   privateKeySecretRef: EnvSecretRefBinding | null;
+  /** Write-only: accepted on save/probe, stored as a secret, never returned. */
+  password: string | null;
+  passwordSecretRef: EnvSecretRefBinding | null;
   knownHosts: string | null;
   strictHostKeyChecking: boolean;
 }

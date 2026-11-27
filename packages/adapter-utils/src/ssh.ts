@@ -28,6 +28,12 @@ export interface SshConnectionConfig {
   username: string;
   remoteWorkspacePath: string;
   privateKey: string | null;
+  /**
+   * Password for hosts that only allow password login. When set, the private
+   * key is ignored and ssh reads the password through a short-lived askpass
+   * helper (OpenSSH 8.4+ `SSH_ASKPASS_REQUIRE=force`).
+   */
+  password?: string | null;
   knownHosts: string | null;
   strictHostKeyChecking: boolean;
 }
@@ -182,6 +188,7 @@ export function parseSshRemoteExecutionSpec(value: unknown): SshRemoteExecutionS
         ? parsed.remoteWorkspacePath.trim()
         : remoteCwd,
     privateKey: typeof parsed.privateKey === "string" && parsed.privateKey.length > 0 ? parsed.privateKey : null,
+    password: typeof parsed.password === "string" && parsed.password.length > 0 ? parsed.password : null,
     knownHosts: typeof parsed.knownHosts === "string" && parsed.knownHosts.length > 0 ? parsed.knownHosts : null,
     strictHostKeyChecking:
       typeof parsed.strictHostKeyChecking === "boolean" ? parsed.strictHostKeyChecking : true,
@@ -370,13 +377,52 @@ async function withTempFile(
   };
 }
 
+async function writeAskpassHelper(
+  password: string,
+): Promise<{ path: string; cleanup: () => Promise<void> }> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-ssh-askpass-"));
+  const passwordPath = path.join(dir, "password");
+  const helperPath = path.join(dir, "askpass");
+  // The password is written verbatim (no trailing newline added) and printed by
+  // the helper with printf so ssh receives exactly the stored value.
+  await fs.writeFile(passwordPath, password, { mode: 0o600, encoding: "utf8" });
+  await fs.writeFile(
+    helperPath,
+    `#!/bin/sh\ncat ${shellQuote(passwordPath)}\nprintf '\\n'\n`,
+    { mode: 0o700, encoding: "utf8" },
+  );
+  return {
+    path: helperPath,
+    cleanup: async () => {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    },
+  };
+}
+
+/**
+ * Builds the executable and leading arguments for an ssh invocation. Callers
+ * append `-p`, the destination and the remote command, then spawn `command`.
+ * Key auth spawns `ssh` directly. Password auth spawns `env` so ssh receives
+ * the askpass variables without changing every caller's process environment.
+ */
 async function createSshAuthArgs(
-  config: Pick<SshConnectionConfig, "privateKey" | "knownHosts" | "strictHostKeyChecking">,
-): Promise<{ args: string[]; cleanup: () => Promise<void> }> {
+  config: Pick<SshConnectionConfig, "privateKey" | "password" | "knownHosts" | "strictHostKeyChecking">,
+): Promise<{ command: string; args: string[]; cleanup: () => Promise<void> }> {
   const tempFiles: Array<() => Promise<void>> = [];
+  const password = typeof config.password === "string" && config.password.length > 0 ? config.password : null;
   const sshArgs = [
-    "-o",
-    "BatchMode=yes",
+    ...(password
+      ? [
+          "-o",
+          "BatchMode=no",
+          "-o",
+          "PreferredAuthentications=password,keyboard-interactive",
+          "-o",
+          "PubkeyAuthentication=no",
+          "-o",
+          "NumberOfPasswordPrompts=1",
+        ]
+      : ["-o", "BatchMode=yes"]),
     "-o",
     "ConnectTimeout=10",
     "-o",
@@ -393,6 +439,27 @@ async function createSshAuthArgs(
     sshArgs.push("-o", "UserKnownHostsFile=/dev/null");
   }
 
+  const cleanup = async () => {
+    await Promise.all(tempFiles.map((cleanupFile) => cleanupFile()));
+  };
+
+  if (password) {
+    const askpass = await writeAskpassHelper(password);
+    tempFiles.push(askpass.cleanup);
+    return {
+      command: "env",
+      args: [
+        `SSH_ASKPASS=${askpass.path}`,
+        "SSH_ASKPASS_REQUIRE=force",
+        // Older OpenSSH builds only consult SSH_ASKPASS when DISPLAY is set.
+        "DISPLAY=paperclip:0",
+        "ssh",
+        ...sshArgs,
+      ],
+      cleanup,
+    };
+  }
+
   if (config.privateKey) {
     const privateKey = await withTempFile("paperclip-ssh-key-", config.privateKey, 0o600);
     tempFiles.push(privateKey.cleanup);
@@ -400,10 +467,9 @@ async function createSshAuthArgs(
   }
 
   return {
+    command: "ssh",
     args: sshArgs,
-    cleanup: async () => {
-      await Promise.all(tempFiles.map((cleanup) => cleanup()));
-    },
+    cleanup,
   };
 }
 
@@ -663,7 +729,7 @@ async function streamLocalFileToSsh(input: {
 
   await new Promise<void>((resolve, reject) => {
     const source = createReadStream(input.localFile);
-    const ssh = spawn("ssh", sshArgs, {
+    const ssh = spawn(auth.command, sshArgs, {
       stdio: ["pipe", "ignore", "pipe"],
     });
 
@@ -717,7 +783,7 @@ async function streamSshToLocalFile(input: {
   ];
 
   await new Promise<void>((resolve, reject) => {
-    const ssh = spawn("ssh", sshArgs, {
+    const ssh = spawn(auth.command, sshArgs, {
       stdio: ["ignore", "pipe", "pipe"],
     });
     const sink = createWriteStream(input.localFile, { mode: 0o600 });
@@ -1326,12 +1392,12 @@ export async function runSshCommand(
     );
 
     return options.stdin != null
-      ? await spawnText("ssh", sshArgs, {
+      ? await spawnText(auth.command, sshArgs, {
           stdin: options.stdin,
           timeout: options.timeoutMs ?? 15_000,
           maxBuffer: options.maxBuffer ?? 1024 * 128,
         })
-      : await execFileText("ssh", sshArgs, {
+      : await execFileText(auth.command, sshArgs, {
           timeout: options.timeoutMs ?? 15_000,
           maxBuffer: options.maxBuffer ?? 1024 * 128,
         });
@@ -1391,7 +1457,7 @@ export async function buildSshSpawnTarget(input: {
   );
 
   return {
-    command: "ssh",
+    command: auth.command,
     args: sshArgs,
     cleanup: auth.cleanup,
   };
@@ -1449,7 +1515,7 @@ export async function syncDirectoryToSsh(input: {
       stdio: ["ignore", "pipe", "pipe"],
       env: tarSpawnEnv(),
     });
-    const ssh = spawn("ssh", sshArgs, {
+    const ssh = spawn(auth.command, sshArgs, {
       stdio: ["pipe", "ignore", "pipe"],
     });
 
@@ -1560,7 +1626,7 @@ export async function syncDirectoryFromSsh(input: {
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const ssh = spawn("ssh", sshArgs, {
+      const ssh = spawn(auth.command, sshArgs, {
         stdio: ["ignore", "pipe", "pipe"],
       });
       const tar = spawn("tar", ["-xf", "-", "-C", stagingDir], {

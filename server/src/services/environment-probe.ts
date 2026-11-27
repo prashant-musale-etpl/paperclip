@@ -284,7 +284,12 @@ export async function probeEnvironment(
   }
 
   try {
-    const { remoteCwd } = await ensureSshWorkspaceReady(parsed.config);
+    const usePassword = parsed.config.authMethod === "password";
+    const { remoteCwd } = await ensureSshWorkspaceReady({
+      ...parsed.config,
+      privateKey: usePassword ? null : parsed.config.privateKey,
+      password: usePassword ? parsed.config.password : null,
+    });
 
     return {
       ok: true,
