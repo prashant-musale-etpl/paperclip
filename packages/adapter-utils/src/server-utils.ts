@@ -3664,7 +3664,8 @@ async function resolveSpawnTarget(
       ),
     });
     return {
-      command: sshResolved,
+      // Password auth wraps ssh in `env` to pass the askpass variables.
+      command: spawnTarget.command === "ssh" ? sshResolved : spawnTarget.command,
       args: spawnTarget.args,
       cwd: process.cwd(),
       cleanup: spawnTarget.cleanup,

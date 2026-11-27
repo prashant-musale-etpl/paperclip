@@ -765,6 +765,7 @@ export type {
   SandboxEnvironmentConfig,
   SandboxEnvironmentProvider,
   SshEnvironmentConfig,
+  SshEnvironmentAuthMethod,
   FeedbackVote,
   FeedbackDataSharingPreference,
   FeedbackTargetType,

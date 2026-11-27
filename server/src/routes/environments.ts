@@ -44,7 +44,7 @@ import {
   collectEnvironmentSecretRefs,
   normalizeEnvironmentConfigForPersistence,
   normalizeEnvironmentConfigForProbe,
-  readSshEnvironmentPrivateKeySecretId,
+  readSshEnvironmentSecretIds,
   type ParsedEnvironmentConfig,
 } from "../services/environment-config.js";
 import { probeEnvironment } from "../services/environment-probe.js";
@@ -1370,8 +1370,7 @@ export function environmentRoutes(
         ),
       ]),
     );
-    const secretId = readSshEnvironmentPrivateKeySecretId(existing);
-    if (secretId) {
+    for (const secretId of readSshEnvironmentSecretIds(existing)) {
       await secrets.remove(secretId);
     }
     await logInstanceEnvironmentActivity({

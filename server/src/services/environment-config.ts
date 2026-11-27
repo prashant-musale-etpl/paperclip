@@ -46,8 +46,11 @@ const sshEnvironmentConfigSchema = z.object({
     .trim()
     .min(1, "SSH environments require a remote workspace path.")
     .refine((value) => value.startsWith("/"), "SSH remote workspace path must be absolute."),
+  authMethod: z.enum(["private_key", "password"]).optional().default("private_key"),
   privateKey: z.null().optional().default(null),
   privateKeySecretRef: secretRefSchema.optional().nullable().default(null),
+  password: z.null().optional().default(null),
+  passwordSecretRef: secretRefSchema.optional().nullable().default(null),
   knownHosts: z
     .string()
     .trim()
@@ -61,6 +64,13 @@ const sshEnvironmentConfigProbeSchema = sshEnvironmentConfigSchema.extend({
   privateKey: z
     .string()
     .trim()
+    .optional()
+    .nullable()
+    .transform((value) => (value && value.length > 0 ? value : null)),
+  // Passwords are not trimmed: leading or trailing spaces can be part of them.
+  password: z
+    .string()
+    .max(1024)
     .optional()
     .nullable()
     .transform((value) => (value && value.length > 0 ? value : null)),
@@ -375,12 +385,23 @@ export async function collectEnvironmentSecretRefs(input: {
   environment: Pick<Environment, "id" | "driver" | "config">;
 }): Promise<Array<{ secretId: string; configPath: string; versionSelector?: SecretVersionSelector }>> {
   const parsed = parseEnvironmentDriverConfig(input.environment);
-  if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef) {
-    return [{
-      secretId: parsed.config.privateKeySecretRef.secretId,
-      configPath: "privateKeySecretRef",
-      versionSelector: parsed.config.privateKeySecretRef.version ?? "latest",
-    }];
+  if (parsed.driver === "ssh") {
+    const refs: Array<{ secretId: string; configPath: string; versionSelector?: SecretVersionSelector }> = [];
+    if (parsed.config.privateKeySecretRef) {
+      refs.push({
+        secretId: parsed.config.privateKeySecretRef.secretId,
+        configPath: "privateKeySecretRef",
+        versionSelector: parsed.config.privateKeySecretRef.version ?? "latest",
+      });
+    }
+    if (parsed.config.passwordSecretRef) {
+      refs.push({
+        secretId: parsed.config.passwordSecretRef.secretId,
+        configPath: "passwordSecretRef",
+        versionSelector: parsed.config.passwordSecretRef.version ?? "latest",
+      });
+    }
+    return refs;
   }
   if (parsed.driver === "sandbox" && parsed.config.provider !== "fake") {
     const schema = await getSandboxProviderConfigSchema(input.db, parsed.config.provider);
@@ -561,9 +582,34 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
       });
     }
     const secrets = secretService(input.db);
-    const { privateKey, ...stored } = parsed.data;
+    const { privateKey, password, ...stored } = parsed.data;
     let nextPrivateKeySecretRef = stored.privateKeySecretRef;
-    if (privateKey) {
+    let nextPasswordSecretRef = stored.passwordSecretRef;
+    if (stored.authMethod === "password" && !password && !nextPasswordSecretRef) {
+      throw unprocessable("SSH password login requires a password.");
+    }
+    if (password && stored.authMethod === "password") {
+      nextPasswordSecretRef = await createEnvironmentSecret({
+        db: input.db,
+        companyId: input.companyId,
+        environmentName: input.environmentName,
+        driver: input.driver,
+        field: "password",
+        provider: input.secretProvider,
+        value: password,
+        actor: input.actor,
+      });
+      if (
+        stored.passwordSecretRef &&
+        stored.passwordSecretRef.secretId !== nextPasswordSecretRef.secretId
+      ) {
+        await secrets.remove(stored.passwordSecretRef.secretId);
+      }
+    }
+    // A ref for the unused method is kept as-is (never deleted here): the UI
+    // lets operators pick shared company secrets, and runtime resolution only
+    // reads the ref that matches authMethod.
+    if (privateKey && stored.authMethod === "private_key") {
       nextPrivateKeySecretRef = await createEnvironmentSecret({
         db: input.db,
         companyId: input.companyId,
@@ -585,6 +631,8 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
       ...stored,
       privateKey: null,
       privateKeySecretRef: nextPrivateKeySecretRef,
+      password: null,
+      passwordSecretRef: nextPasswordSecretRef,
     } satisfies SshEnvironmentConfig;
   }
 
@@ -670,32 +718,41 @@ export async function resolveEnvironmentDriverConfigForRuntime(
   const parsed = parseEnvironmentDriverConfig(environment);
   const secrets = secretService(db);
   const environmentId = environment.id;
-  if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef && !environmentId) {
+  const sshSecretRef =
+    parsed.driver === "ssh"
+      ? parsed.config.authMethod === "password"
+        ? { ref: parsed.config.passwordSecretRef, configPath: "passwordSecretRef" as const }
+        : { ref: parsed.config.privateKeySecretRef, configPath: "privateKeySecretRef" as const }
+      : null;
+  if (parsed.driver === "ssh" && sshSecretRef?.ref && !environmentId) {
     throw unprocessable("Runtime secret resolution requires an environment id");
   }
 
-  if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef) {
+  if (parsed.driver === "ssh" && sshSecretRef?.ref) {
     if (!companyId) {
       throw unprocessable("Runtime secret resolution requires a companyId context");
     }
+    const value = await secrets.resolveSecretValue(
+      companyId,
+      sshSecretRef.ref.secretId,
+      sshSecretRef.ref.version ?? "latest",
+      {
+        consumerType: "environment",
+        consumerId: environmentId!,
+        actorType: "system",
+        actorId: null,
+        issueId: context?.issueId ?? null,
+        heartbeatRunId: context?.heartbeatRunId ?? null,
+        configPath: sshSecretRef.configPath,
+      },
+    );
     return {
       driver: "ssh",
       config: {
         ...parsed.config,
-        privateKey: await secrets.resolveSecretValue(
-          companyId,
-          parsed.config.privateKeySecretRef.secretId,
-          parsed.config.privateKeySecretRef.version ?? "latest",
-          {
-            consumerType: "environment",
-            consumerId: environmentId!,
-            actorType: "system",
-            actorId: null,
-            issueId: context?.issueId ?? null,
-            heartbeatRunId: context?.heartbeatRunId ?? null,
-            configPath: "privateKeySecretRef",
-          },
-        ),
+        ...(sshSecretRef.configPath === "passwordSecretRef"
+          ? { password: value }
+          : { privateKey: value }),
       },
     };
   }
@@ -791,6 +848,17 @@ export function readSshEnvironmentPrivateKeySecretId(
   const parsed = sshEnvironmentConfigSchema.safeParse(parseObject(environment.config));
   if (!parsed.success) return null;
   return parsed.data.privateKeySecretRef?.secretId ?? null;
+}
+
+/** Every dedicated secret an SSH environment owns (private key and password). */
+export function readSshEnvironmentSecretIds(
+  environment: Pick<Environment, "driver" | "config">,
+): string[] {
+  if (environment.driver !== "ssh") return [];
+  const parsed = sshEnvironmentConfigSchema.safeParse(parseObject(environment.config));
+  if (!parsed.success) return [];
+  return [parsed.data.privateKeySecretRef?.secretId, parsed.data.passwordSecretRef?.secretId]
+    .filter((id): id is string => typeof id === "string");
 }
 
 export function parseEnvironmentDriverConfig(

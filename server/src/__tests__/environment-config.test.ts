@@ -25,12 +25,15 @@ describe("environment config helpers", () => {
       port: 2222,
       username: "ssh-user",
       remoteWorkspacePath: "/srv/paperclip/workspace",
+      authMethod: "private_key",
       privateKey: null,
       privateKeySecretRef: {
         type: "secret_ref",
         secretId: "11111111-1111-1111-1111-111111111111",
         version: "latest",
       },
+      password: null,
+      passwordSecretRef: null,
       knownHosts: null,
       strictHostKeyChecking: true,
     });
@@ -97,12 +100,63 @@ describe("environment config helpers", () => {
         port: 22,
         username: "ssh-user",
         remoteWorkspacePath: "/srv/paperclip/workspace",
+        authMethod: "private_key",
         privateKey: null,
         privateKeySecretRef: null,
+        password: null,
+        passwordSecretRef: null,
         knownHosts: null,
         strictHostKeyChecking: false,
       },
     });
+  });
+
+  it("normalizes SSH password login with a password secret ref", () => {
+    const config = normalizeEnvironmentConfig({
+      driver: "ssh",
+      config: {
+        host: "ssh.example.test",
+        username: "ssh-user",
+        remoteWorkspacePath: "/srv/paperclip/workspace",
+        authMethod: "password",
+        passwordSecretRef: {
+          type: "secret_ref",
+          secretId: "22222222-2222-2222-2222-222222222222",
+        },
+      },
+    });
+
+    expect(config).toMatchObject({
+      authMethod: "password",
+      privateKey: null,
+      privateKeySecretRef: null,
+      password: null,
+      passwordSecretRef: {
+        type: "secret_ref",
+        secretId: "22222222-2222-2222-2222-222222222222",
+        version: "latest",
+      },
+    });
+  });
+
+  it("rejects raw SSH passwords and unknown auth methods in the stored config shape", () => {
+    const base = {
+      host: "ssh.example.test",
+      username: "ssh-user",
+      remoteWorkspacePath: "/srv/paperclip/workspace",
+    };
+    expect(() =>
+      normalizeEnvironmentConfig({
+        driver: "ssh",
+        config: { ...base, authMethod: "password", password: "hunter2" },
+      }),
+    ).toThrow(HttpError);
+    expect(() =>
+      normalizeEnvironmentConfig({
+        driver: "ssh",
+        config: { ...base, authMethod: "keyboard" },
+      }),
+    ).toThrow(HttpError);
   });
 
   it("normalizes sandbox config into its canonical stored shape", () => {

@@ -74,8 +74,11 @@ type EnvironmentFormState = {
   sshPort: string;
   sshUsername: string;
   sshRemoteWorkspacePath: string;
+  sshAuthMethod: "private_key" | "password";
   sshPrivateKey: string;
   sshPrivateKeySecretId: string;
+  sshPassword: string;
+  sshPasswordSecretId: string;
   sshKnownHosts: string;
   sshStrictHostKeyChecking: boolean;
   sandboxProvider: string;
@@ -127,11 +130,17 @@ function buildEnvironmentPayload(form: EnvironmentFormState) {
             port: Number.parseInt(form.sshPort || "22", 10) || 22,
             username: form.sshUsername.trim(),
             remoteWorkspacePath: form.sshRemoteWorkspacePath.trim(),
-            privateKey: form.sshPrivateKey.trim() || null,
+            authMethod: form.sshAuthMethod,
+            privateKey: form.sshAuthMethod === "private_key" ? form.sshPrivateKey.trim() || null : null,
             privateKeySecretRef:
               form.sshPrivateKey.trim().length > 0 || !form.sshPrivateKeySecretId
                 ? null
                 : { type: "secret_ref" as const, secretId: form.sshPrivateKeySecretId, version: "latest" as const },
+            password: form.sshAuthMethod === "password" && form.sshPassword.length > 0 ? form.sshPassword : null,
+            passwordSecretRef:
+              form.sshPassword.length > 0 || !form.sshPasswordSecretId
+                ? null
+                : { type: "secret_ref" as const, secretId: form.sshPasswordSecretId, version: "latest" as const },
             knownHosts: form.sshKnownHosts.trim() || null,
             strictHostKeyChecking: form.sshStrictHostKeyChecking,
           }
@@ -153,8 +162,11 @@ function createEmptyEnvironmentForm(): EnvironmentFormState {
     sshPort: "22",
     sshUsername: "",
     sshRemoteWorkspacePath: "",
+    sshAuthMethod: "private_key",
     sshPrivateKey: "",
     sshPrivateKeySecretId: "",
+    sshPassword: "",
+    sshPasswordSecretId: "",
     sshKnownHosts: "",
     sshStrictHostKeyChecking: true,
     sandboxProvider: "",
@@ -197,6 +209,14 @@ function readSshConfig(environment: Environment) {
       typeof (config.privateKeySecretRef as { secretId?: unknown }).secretId === "string"
         ? String((config.privateKeySecretRef as { secretId: string }).secretId)
         : "",
+    authMethod: (config.authMethod === "password" ? "password" : "private_key") as "private_key" | "password",
+    passwordSecretId:
+      config.passwordSecretRef &&
+      typeof config.passwordSecretRef === "object" &&
+      !Array.isArray(config.passwordSecretRef) &&
+      typeof (config.passwordSecretRef as { secretId?: unknown }).secretId === "string"
+        ? String((config.passwordSecretRef as { secretId: string }).secretId)
+        : "",
     knownHosts: typeof config.knownHosts === "string" ? config.knownHosts : "",
     strictHostKeyChecking:
       typeof config.strictHostKeyChecking === "boolean"
@@ -228,8 +248,11 @@ function createEnvironmentFormFromEnvironment(environment: Environment): Environ
       sshPort: ssh.port,
       sshUsername: ssh.username,
       sshRemoteWorkspacePath: ssh.remoteWorkspacePath,
+      sshAuthMethod: ssh.authMethod,
       sshPrivateKey: ssh.privateKey,
       sshPrivateKeySecretId: ssh.privateKeySecretId,
+      sshPassword: "",
+      sshPasswordSecretId: ssh.passwordSecretId,
       sshKnownHosts: ssh.knownHosts,
       sshStrictHostKeyChecking: ssh.strictHostKeyChecking,
       envVars: environment.envVars ?? {},
@@ -2341,6 +2364,56 @@ export function CompanyEnvironments({ mode = "list" }: CompanyEnvironmentsProps)
                         setEnvironmentForm((current) => ({ ...current, sshRemoteWorkspacePath: e.target.value }))}
                     />
                   </Field>
+                  <Field label="Authentication" hint="Use a private key (recommended) or a password for hosts that only allow password login.">
+                    <select
+                      className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                      value={environmentForm.sshAuthMethod}
+                      onChange={(e) =>
+                        setEnvironmentForm((current) => ({
+                          ...current,
+                          sshAuthMethod: e.target.value === "password" ? "password" : "private_key",
+                        }))}
+                    >
+                      <option value="private_key">Private key</option>
+                      <option value="password">Password</option>
+                    </select>
+                  </Field>
+                  {environmentForm.sshAuthMethod === "password" ? (
+                  <Field
+                    label="Password"
+                    hint={
+                      environmentForm.sshPasswordSecretId
+                        ? "Uses the saved secret. Type a new password to replace it."
+                        : "Stored as a company secret and never shown again. Requires OpenSSH 8.4+ on the Paperclip server."
+                    }
+                  >
+                    <div className="space-y-2">
+                      <select
+                        className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                        value={environmentForm.sshPasswordSecretId}
+                        onChange={(e) =>
+                          setEnvironmentForm((current) => ({
+                            ...current,
+                            sshPasswordSecretId: e.target.value,
+                            sshPassword: e.target.value ? "" : current.sshPassword,
+                          }))}
+                      >
+                        <option value="">No saved secret</option>
+                        {(secrets ?? []).map((secret) => (
+                          <option key={secret.id} value={secret.id}>{secret.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                        type="password"
+                        autoComplete="new-password"
+                        value={environmentForm.sshPassword}
+                        disabled={!!environmentForm.sshPasswordSecretId}
+                        onChange={(e) => setEnvironmentForm((current) => ({ ...current, sshPassword: e.target.value }))}
+                      />
+                    </div>
+                  </Field>
+                  ) : (
                   <Field label="Private key" hint="Optional PEM private key. Leave blank to rely on the server's SSH agent or default keychain.">
                     <div className="space-y-2">
                       <select
@@ -2366,6 +2439,7 @@ export function CompanyEnvironments({ mode = "list" }: CompanyEnvironmentsProps)
                       />
                     </div>
                   </Field>
+                  )}
                   <Field label="Known hosts" hint="Optional known_hosts block used when strict host key checking is enabled.">
                     <textarea
                       className="h-32 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs font-mono outline-none"
